@@ -369,3 +369,173 @@ By making this change, the shooting bullets and dropping bombs functionality sho
 ### Q: Nice, it is working as expected now!
 
 A: I'm glad it's working correctly now! If you have any more questions or need further assistance, feel free to ask. I'm here to help. Enjoy your side-scrolling game!
+
+### Q: Would you please translate it to TypeScript, so it is easier to maintain?
+
+A: Sure! Here's the code translated to TypeScript. You will need to create an HTML file and a TypeScript (.ts) file. First, create an HTML file and include a reference to the compiled JavaScript file, which will be created after you compile the TypeScript code:
+
+index.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Side Scrolling Game</title>
+  <style>
+    canvas {
+      display: block;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <script src="game.js"></script>
+</body>
+</html>
+```
+Next, create a TypeScript file named game.ts and paste the following code:
+```typescript
+// A ton of TypeScript
+```
+
+
+To compile the TypeScript code, you'll need to have TypeScript installed. You can install it using npm with the following command:
+
+```bash
+npm install -g typescript
+```
+
+After installing TypeScript, navigate to the directory containing the game.ts file and run the following command to compile the TypeScript code:
+```bash
+tsc game.ts
+```
+This command will create a game.js file, which is the compiled JavaScript code. Now you can open index.html in a web browser, and the game should run as expected.
+
+Please note that this TypeScript code might not be the most idiomatic or optimal TypeScript code, but it should serve as a starting point for you to maintain and improve upon.
+
+### Q: I had to add the following parameters to tsc "--lib es2019,dom" and "--target es2019". Is there a way to automate the TypeScript compilation?
+
+A: Yes, you can automate TypeScript compilation by using a tsconfig.json file in your project. The tsconfig.json file specifies the root files and the TypeScript compiler options required to build the project.
+
+Here's a sample tsconfig.json file for your project:
+```json
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "commonjs",
+    "lib": ["es2019", "dom"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true
+  }
+}
+```
+Here's a brief explanation of the options used:
+
+- target: Set the target ECMAScript version.
+- module: Set the module system for your project.
+- lib: Specify a list of library files to include in the compilation.
+- outDir: Set the output directory for the compiled JavaScript files.
+- rootDir: Set the root directory of your TypeScript source files.
+- strict: Enable all strict type-checking options.
+- esModuleInterop: Enable emitting additional JavaScript to ease using CommonJS and ES module interop.
+
+To set up your project with this configuration, follow these steps:
+
+1. Create a folder named src in your project folder.
+2. Move the game.ts file to the src folder.
+3. Create a tsconfig.json file in your project folder (at the same level as the src folder).
+4. Copy the contents of the sample tsconfig.json provided above and paste it into your tsconfig.json file.
+5. Update the reference to the compiled JavaScript file in your index.html file to point to the dist folder:
+```html
+<script src="dist/game.js"></script>
+```
+Now, when you run tsc in the command line, TypeScript will use the settings from the tsconfig.json file to compile your project. The compiled JavaScript files will be placed in the dist folder.
+
+You can also use the tsc --watch command to watch for file changes and recompile your TypeScript code automatically when any changes are detected. To do this, simply run the following command:
+```bash
+tsc --watch
+```
+This command will keep running in the background, and whenever you make changes to your TypeScript files, it will recompile the project automatically.
+
+### Q: When I do this, I get this error "src/game.ts:51:9 - error TS18047: 'ctx' is possibly 'null'."
+
+A: You're getting this error because TypeScript's strict null checks are enabled and TypeScript can't guarantee that ctx is not null. To fix this error, you can add a null check before using the ctx variable.
+
+Update the ctx variable assignment as follows:...
+
+### Q: Can we instead change the TypeScript setting?
+
+A: Sure! You can disable the strict null checks by modifying the tsconfig.json file. Update the compilerOptions section as follows:
+```json
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "commonjs",
+    "lib": ["es2019", "dom"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "strictNullChecks": false,
+    "esModuleInterop": true
+  }
+}
+```
+By adding "strictNullChecks": false to the compilerOptions, you're telling TypeScript not to enforce strict null checking. With this change, the error you encountered should no longer appear when compiling the TypeScript code.
+
+However, please note that disabling strict null checks may make your code more prone to runtime errors related to null or undefined values. It's generally a good practice to keep strict null checks enabled and handle possible null values in your code.
+
+### Q: Can we modify the project so it doesn't need TypeScript to be installed globally?
+
+A: Yes, you can modify the project so it doesn't require a global installation of TypeScript. Instead, you can use a local installation of TypeScript as a project dependency. To do this, follow these steps:
+
+Initialize a new npm project by running npm init in your project folder. You can accept the default settings or customize them as needed. This command will create a package.json file in your project folder.
+
+Install TypeScript as a local development dependency by running the following command:
+```bash
+npm install --save-dev typescript
+```
+This command will install TypeScript locally and add it as a development dependency in your package.json file.
+
+Update your package.json file to include a new scripts section with a build script to compile your TypeScript code:
+```json
+{
+  "name": "your-project-name",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^4.5.4"
+  }
+}
+```
+Replace "your-project-name" with the actual name of your project. Make sure to keep the other properties intact.
+
+Now, you can compile your TypeScript code using the locally installed TypeScript compiler by running the following npm script:
+```bash
+npm run build
+```
+
+This command will run the build script you added to your package.json file, which in turn executes the local TypeScript compiler (tsc).
+
+By following these steps, you no longer need a global installation of TypeScript, and you can compile your TypeScript code using the local TypeScript compiler in your project.
+
+### Q: Does package-lock.json need to be committed to source control?
+
+A:
+Yes, it is generally recommended to commit the package-lock.json file to your source control. The package-lock.json file contains detailed information about the exact versions of your project's dependencies, as well as their dependencies, ensuring that the dependency tree is consistent across different environments and installations.
+
+Committing the package-lock.json file to source control has several benefits:
+
+Consistent dependency versions: When other team members or continuous integration (CI) systems check out your project and run npm install, they will install the same versions of the dependencies specified in the package-lock.json file. This helps ensure that your project behaves consistently across different environments.
+
+Faster installations: The package-lock.json file contains information about the complete dependency tree, so npm can use it to optimize the installation process by avoiding unnecessary version resolution steps.
+
+Improved security: By committing the package-lock.json file to source control, you can have better control over which versions of dependencies are used in your project. This can help prevent the introduction of malicious code or unintended breaking changes through updates to your project's dependencies.
+
+In summary, committing the package-lock.json file to source control helps maintain consistent dependency versions across different environments and installations, leading to more stable and predictable application behavior.

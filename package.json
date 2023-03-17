@@ -1,0 +1,22 @@
+{
+  "name": "gpt-scroller",
+  "version": "1.0.0",
+  "description": "Side scroller created by ChatGPT",
+  "main": "dist/game.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmikov/gpt-scroller.git"
+  },
+  "author": "ChatGPT",
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/tmikov/gpt-scroller/issues"
+  },
+  "homepage": "https://github.com/tmikov/gpt-scroller#readme",
+  "devDependencies": {
+    "typescript": "^5.0.2"
+  }
+}
