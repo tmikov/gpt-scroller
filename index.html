@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Side Scrolling Game</title>
+  <style>
+    canvas {
+      display: block;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const shipImg = new Image();
+    shipImg.src = 'ship.png';
+
+    class Ship {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vel = 5;
+        this.width = shipImg.width;
+        this.height = shipImg.height;
+      }
+
+      draw() {
+        ctx.drawImage(shipImg, this.x, this.y);
+      }
+
+      update(keys) {
+        if (keys['ArrowLeft'] && this.x > 0) {
+          this.x -= this.vel;
+        }
+        if (keys['ArrowRight'] && this.x < canvas.width - this.width) {
+          this.x += this.vel;
+        }
+        if (keys['ArrowUp'] && this.y > 0) {
+          this.y -= this.vel;
+        }
+        if (keys['ArrowDown'] && this.y < canvas.height - this.height) {
+          this.y += this.vel;
+        }
+      }
+    }
+
+    class Bullet {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 10;
+        this.height = 5;
+        this.vel = 10;
+      }
+
+      draw() {
+        ctx.fillStyle = 'yellow';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+      }
+
+      update() {
+        this.x += this.vel;
+      }
+    }
+
+    class Bomb {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 10;
+        this.height = 10;
+        this.vel = 5;
+      }
+
+      draw() {
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+      }
+
+      update() {
+        this.y += this.vel;
+      }
+    }
+
+    const ship = new Ship(canvas.width / 2, canvas.height - 100);
+    const bullets = [];
+    const bombs = [];
+
+    const keys = {};
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.key] = true;
+
+      if (e.key === ' ') {
+        const bullet = new Bullet(ship.x + ship.width / 2, ship.y);
+        bullets.push(bullet);
+      }
+
+      if (e.key.toLowerCase() === 'b') {
+        const bomb = new Bomb(ship.x + ship.width / 2, ship.y + ship.height);
+        bombs.push(bomb);
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.key] = false;
+    });
+
+    function gameLoop() {
+      ctx.fillStyle = 'rgba(0, 0, 30, 1)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ship.update(keys);
+      ship.draw();
+
+      bullets.forEach((bullet, index) => {
+        bullet.update();
+        bullet.draw();
+        if (bullet.y < 0) {
+          bullets.splice(index, 1);
+        }
+      });
+
+      bombs.forEach((bomb, index) => {
+        bomb.update();
+        bomb.draw();
+        if (bomb.y > canvas.height) {
+          bombs.splice(index, 1);
+        }
+      });
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    shipImg.onload = () => {
+      gameLoop();
+    };
+  </script>
+</body>
+</html>
+
