@@ -11,144 +11,158 @@
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
-  <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
 
-    const shipImg = new Image();
-    shipImg.src = 'ship.png';
+  const images = {
+    ship: 'ship.png',
+    enemy: 'enemy.png',
+    background: 'background.png',
+  };
 
-    const enemyImg = new Image();
-    enemyImg.src = 'enemy.png';
+  function loadImage(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => resolve(img);
+    });
+  }
 
-    const backgroundImg = new Image();
-    backgroundImg.src = 'background.png';
+  async function loadImages(imagePaths) {
+    const imagePromises = Object.entries(imagePaths).map(async ([name, path]) => {
+      const img = await loadImage(path);
+      return [name, img];
+    });
 
-    class Ship {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.vel = 5;
-        this.width = 64;
-        this.height = 38;
-      }
+    const loadedImages = await Promise.all(imagePromises);
+    return Object.fromEntries(loadedImages);
+  }
 
-      draw() {
-        ctx.drawImage(shipImg, this.x, this.y);
-      }
-
-      update(keys) {
-        if (keys['ArrowLeft'] && this.x > 0) {
-          this.x -= this.vel;
-        }
-        if (keys['ArrowRight'] && this.x < canvas.width - this.width) {
-          this.x += this.vel;
-        }
-        if (keys['ArrowUp'] && this.y > 0) {
-          this.y -= this.vel;
-        }
-        if (keys['ArrowDown'] && this.y < canvas.height - this.height) {
-          this.y += this.vel;
-        }
-      }
+  class Ship {
+    constructor(x, y, width, height) {
+      this.x = x;
+      this.y = y;
+      this.vel = 5;
+      this.width = width;
+      this.height = height;
     }
 
-    class Bullet {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = 10;
-        this.height = 5;
-        this.vel = 10;
-      }
-
-      draw() {
-        ctx.fillStyle = 'yellow';
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-      }
-
-      update() {
-        this.x += this.vel;
-      }
+    update(keys) {
+      if (keys['ArrowLeft']) this.x -= this.vel;
+      if (keys['ArrowRight']) this.x += this.vel;
+      if (keys['ArrowUp']) this.y -= this.vel;
+      if (keys['ArrowDown']) this.y += this.vel;
     }
 
-    class Enemy {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = enemyImg.width;
-        this.height = enemyImg.height;
-        this.vel = 3;
-      }
+    draw(shipImg) {
+      ctx.drawImage(shipImg, this.x, this.y, this.width, this.height);
+    }
+  }
 
-      draw() {
-        ctx.drawImage(enemyImg, this.x, this.y);
-      }
-
-      update() {
-        this.x -= this.vel;
-      }
+  class Bullet {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.width = 5;
+      this.height = 5;
+      this.vel = 8;
     }
 
-    class Bomb {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = 10;
-        this.height = 10;
-        this.vel = 5;
-      }
-
-      draw() {
-        ctx.fillStyle = 'red';
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-      }
-
-      update() {
-        this.y += this.vel;
-      }
+    update() {
+      this.x += this.vel;
     }
 
-    const ship = new Ship(canvas.width / 2, canvas.height - 100);
-    const bullets = [];
-    const bombs = [];
-    const enemies = [];
+    draw() {
+      ctx.fillStyle = 'yellow';
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+  }
 
-    let enemySpawnCounter = 0;
-    const enemySpawnRate = 120;
+  class Bomb {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.width = 10;
+      this.height = 10;
+      this.vel = 5;
+    }
 
-    let backgroundX = 0;
-    const backgroundSpeed = 1;
+    update() {
+      this.y += this.vel;
+    }
+
+    draw() {
+      ctx.fillStyle = 'red';
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+  }
+
+  class Enemy {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.width = 64;
+      this.height = 64;
+      this.vel = 2;
+    }
+
+    update() {
+      this.x -= this.vel;
+    }
+
+    draw(enemyImg) {
+      ctx.drawImage(enemyImg, this.x, this.y, this.width, this.height);
+    }
+  }
+
+  const bullets = [];
+  const bombs = [];
+  const enemies = [];
+
+  let enemySpawnCounter = 0;
+  const enemySpawnRate = 120;
+
+  let backgroundX = 0;
+  const backgroundSpeed = 1;
+
+  function checkCollision(rect1, rect2) {
+    return (
+            rect1.x < rect2.x + rect2.width &&
+            rect1.x + rect1.width > rect2.x &&
+            rect1.y < rect2.y + rect2.height &&
+            rect1.y + rect1.height > rect2.y
+    );
+  }
+
+  loadImages(images).then((loadedImages) => {
+    const shipImg = loadedImages.ship;
+    const enemyImg = loadedImages.enemy;
+    const backgroundImg = loadedImages.background;
+    const ship = new Ship(canvas.width / 2, canvas.height - 100, shipImg.width, shipImg.height);
 
     const keys = {};
 
-    window.addEventListener('keydown', (e) => {
-      keys[e.key] = true;
+    document.addEventListener('keydown', (e) => {
+      if (!keys[e.code]) {
+        keys[e.code] = true;
 
-      if (e.key === ' ') {
-        const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2);
-        bullets.push(bullet);
-      }
+        if (e.code === 'Space') {
+          const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2 - 2.5);
+          bullets.push(bullet);
+        }
 
-      if (e.key.toLowerCase() === 'b') {
-        const bomb = new Bomb(ship.x + ship.width / 2, ship.y + ship.height);
-        bombs.push(bomb);
+        if (e.code === 'KeyB') {
+          const bomb = new Bomb(ship.x + ship.width / 2 - 5, ship.y + ship.height);
+          bombs.push(bomb);
+        }
       }
     });
 
-    window.addEventListener('keyup', (e) => {
-      keys[e.key] = false;
+    document.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
     });
-
-    function checkCollision(a, b) {
-      return (
-        a.x < b.x + b.width &&
-        a.x + a.width > b.x &&
-        a.y < b.y + b.height &&
-        a.y + a.height > b.y
-      );
-    }
 
     function gameLoop() {
       ctx.fillStyle = 'rgba(0, 0, 30, 1)';
@@ -162,56 +176,57 @@
         backgroundX = 0;
       }
 
-
       ship.update(keys);
-      ship.draw();
+      ship.draw(shipImg);
 
-      bullets.forEach((bullet, bulletIndex) => {
+      bullets.forEach((bullet, i) => {
         bullet.update();
         bullet.draw();
+
         if (bullet.x > canvas.width) {
-          bullets.splice(bulletIndex, 1);
-        } else {
-            enemies.forEach((enemy, enemyIndex) => {
-              if (checkCollision(bullet, enemy)) {
-                bullets.splice(bulletIndex, 1);
-                enemies.splice(enemyIndex, 1);
-              }
-            });
+          bullets.splice(i, 1);
         }
       });
 
-      bombs.forEach((bomb, index) => {
+      bombs.forEach((bomb, i) => {
         bomb.update();
         bomb.draw();
+
         if (bomb.y > canvas.height) {
-          bombs.splice(index, 1);
+          bombs.splice(i, 1);
         }
       });
 
       enemySpawnCounter++;
+
       if (enemySpawnCounter >= enemySpawnRate) {
-        const enemyY = Math.random() * (canvas.height - enemyImg.height);
-        const enemy = new Enemy(canvas.width, enemyY);
+        const y = Math.random() * (canvas.height - 64);
+        const enemy = new Enemy(canvas.width, y);
         enemies.push(enemy);
         enemySpawnCounter = 0;
       }
 
-      enemies.forEach((enemy, index) => {
+      enemies.forEach((enemy, i) => {
         enemy.update();
-        enemy.draw();
+        enemy.draw(enemyImg);
+
         if (enemy.x < -enemy.width) {
-          enemies.splice(index, 1);
+          enemies.splice(i, 1);
         }
+
+        bullets.forEach((bullet, j) => {
+          if (checkCollision(bullet, enemy)) {
+            bullets.splice(j, 1);
+            enemies.splice(i, 1);
+          }
+        });
       });
 
       requestAnimationFrame(gameLoop);
     }
 
-    shipImg.onload = () => {
-      gameLoop();
-    };
-  </script>
+    gameLoop();
+  });
+</script>
 </body>
 </html>
-

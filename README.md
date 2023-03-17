@@ -149,3 +149,223 @@ At this point I followed the first recommendation, since it was simple Full disc
 ```javascript
 const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2);
 ```
+
+Things were working pretty well now, so I published [a small video of gameplay on Twitter](https://twitter.com/tmikov/status/1636593764973285376?s=20).
+
+Then I went back to the bot's second suggestion.
+
+### Q: There is another problem now. When we moved the declaration of ship, it is no longer accessible to the keydown event listener
+
+A: You're right. The ship object is now only accessible within the scope of the shipImg.onload event handler. To fix this, you can move the key event listeners inside the shipImg.onload event handler. Here's the updated code:
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Side Scrolling Game</title>
+  <style>
+    canvas {
+      display: block;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const shipImg = new Image();
+    shipImg.src = 'ship.png';
+
+    const enemyImg = new Image();
+    enemyImg.src = 'enemy.png';
+
+    const backgroundImg = new Image();
+    backgroundImg.src = 'background.png';
+
+    // ... Rest of the Ship, Bullet, Enemy, and Bomb class code
+
+    const bullets = [];
+    const bombs = [];
+    const enemies = [];
+
+    let enemySpawnCounter = 0;
+    const enemySpawnRate = 120;
+
+    let backgroundX = 0;
+    const backgroundSpeed = 1;
+
+    shipImg.onload = () => {
+      const ship = new Ship(canvas.width / 2, canvas.height - 100, shipImg.width, shipImg.height);
+
+      const keys = {};
+
+      document.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+
+        if (e.code === 'Space' && !keys['Space']) {
+          const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2 - 2.5);
+          bullets.push(bullet);
+        }
+
+        if (e.code === 'KeyB' && !keys['KeyB']) {
+          const bomb = new Bomb(ship.x + ship.width / 2 - 5, ship.y + ship.height);
+          bombs.push(bomb);
+        }
+      });
+
+      document.addEventListener('keyup', (e) => {
+        keys[e.code] = false;
+      });
+
+      // ... Rest of the checkCollision() function code
+
+      gameLoop(ship);
+    };
+
+    function gameLoop(ship) {
+      // ... rest of the game loop code, using the ship object passed as a parameter
+    }
+
+  </script>
+</body>
+</html>
+```
+Now, the key event listeners are declared inside the shipImg.onload event handler, so the ship object is accessible to them. This should resolve the issue and allow the game to function correctly.
+
+### Q: That approach wouldn't scale if we wanted to know the dimensions of more loaded images.
+
+A: You're right. If you need to load multiple images and make sure they're all loaded before running the game loop, you can use a function to load all images and wait for all of them to load before proceeding. Here's a solution using Promises:
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Side Scrolling Game</title>
+  <style>
+    canvas {
+      display: block;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const images = {
+      ship: 'ship.png',
+      enemy: 'enemy.png',
+      background: 'background.png',
+    };
+
+    function loadImage(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => resolve(img);
+      });
+    }
+
+    async function loadImages(imagePaths) {
+      const imagePromises = Object.entries(imagePaths).map(async ([name, path]) => {
+        const img = await loadImage(path);
+        return [name, img];
+      });
+
+      const loadedImages = await Promise.all(imagePromises);
+      return Object.fromEntries(loadedImages);
+    }
+
+    // ... Rest of the Ship, Bullet, Enemy, and Bomb class code
+
+    const bullets = [];
+    const bombs = [];
+    const enemies = [];
+
+    let enemySpawnCounter = 0;
+    const enemySpawnRate = 120;
+
+    let backgroundX = 0;
+    const backgroundSpeed = 1;
+
+    loadImages(images).then((loadedImages) => {
+      const shipImg = loadedImages.ship;
+      const ship = new Ship(canvas.width / 2, canvas.height - 100, shipImg.width, shipImg.height);
+
+      // ... Rest of the key event listeners, checkCollision(), and gameLoop() function code
+
+      gameLoop(ship);
+    });
+
+  </script>
+</body>
+</html>
+```
+Here's what's changed:
+
+- Created an images object to store the image paths.
+- Created a loadImage function that takes a source path and returns a Promise that resolves with the loaded image.
+- Created an async loadImages function that takes an object with image paths and returns an object with the same keys and loaded images as values.
+- Replaced the shipImg.onload event handler with a call to loadImages that uses .then() to wait for all images to load before proceeding.
+
+Now, the game loop will only run after all images are loaded, and you can access the dimensions of each image using the loadedImages object. This approach scales well with multiple images and makes it easy to manage and load them.
+
+### Q: Can you print the entire source?
+
+A: Certainly! Here's the complete source code with the improvements for loading multiple images:
+
+...
+
+This is the complete source code with the improved image loading mechanism and all other features included in the previous steps.
+
+### Q: When I run it, I get an error "ReferenceError: shipImg is not defined"
+
+A: Apologies for the oversight. I see the problem now. We need to update the draw method of the Ship class to use the loaded image. Similarly, the draw method of the Enemy class should also be updated. Here's the fix:
+
+- Update the Ship class's draw method to take the shipImg as a parameter.
+- Update the Enemy class's draw method to take the enemyImg as a parameter.
+- Update the calls to the ship.draw() and enemy.draw() methods in the gameLoop function to pass the required images as arguments.
+
+Here's the updated code:
+
+...
+
+By making these changes, the ReferenceError should be resolved, and the game should run without errors.
+
+### Q: I am afraid there is another bug in the code, since you changed it a little from the previously working version. I know where the bug is, but I want to see whether you can find it. Shooting bullets and dropping bombs is not working anymore. Pressing space for bullets or 'b' for bombs has no effect.
+
+A: My apologies for the confusion. I see the issue now. The problem is that the key event listeners are checking the keys object for truthiness rather than checking if the key is not already pressed. Here's the fix:
+
+Update the keydown event listener to check if the key is not already pressed using the !keys[e.code] condition.
+Here's the updated code for the key event listeners:
+```javascript
+document.addEventListener('keydown', (e) => {
+  if (!keys[e.code]) {
+    keys[e.code] = true;
+
+    if (e.code === 'Space') {
+      const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2 - 2.5);
+      bullets.push(bullet);
+    }
+
+    if (e.code === 'KeyB') {
+      const bomb = new Bomb(ship.x + ship.width / 2 - 5, ship.y + ship.height);
+      bombs.push(bomb);
+    }
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  keys[e.code] = false;
+});
+```
+By making this change, the shooting bullets and dropping bombs functionality should work as expected.
+
+### Q: Nice, it is working as expected now!
+
+A: I'm glad it's working correctly now! If you have any more questions or need further assistance, feel free to ask. I'm here to help. Enjoy your side-scrolling game!
