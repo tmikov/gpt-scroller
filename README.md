@@ -95,3 +95,57 @@ Here are the main changes to the code:
 - Added a backgroundSpeed variable to control the speed of the scrolling background.
 - Updated the gameLoop() function to draw the background and update its position.
 - Now, the game will have a scrolling background. The background will scroll to the left at a constant speed, creating a parallax effect. The scrolling will loop, creating an infinitely scrolling background.
+
+### Q: It all works very well. I discovered one small problem. In the Ship constructor, for some reason shipImg.width and shipImg.height are always 0.
+
+A: You're right, and that's because the shipImg.width and shipImg.height are being accessed before the image has finished loading. To fix this issue, you can either use fixed values for the ship width and height or access the image dimensions after the image has been loaded.
+
+Here's an example with fixed width and height values:
+```javascript
+class Ship {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vel = 5;
+    this.width = 64; // fixed width
+    this.height = 64; // fixed height
+  }
+
+  // ... rest of the Ship class code
+}
+```
+Alternatively, if you want to access the image dimensions after the image has been loaded, you can use a callback function in the Ship constructor:
+```javascript
+class Ship {
+  constructor(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.vel = 5;
+    this.width = width;
+    this.height = height;
+  }
+
+  // ... rest of the Ship class code
+}
+
+// ... rest of the code
+
+shipImg.onload = () => {
+  const ship = new Ship(canvas.width / 2, canvas.height - 100, shipImg.width, shipImg.height);
+  gameLoop(ship);
+};
+
+function gameLoop(ship) {
+  // ... rest of the game loop code, using the ship object passed as a parameter
+}
+```
+In this alternative approach, the Ship constructor takes width and height as additional parameters. We wait for the shipImg.onload event to fire, and then we create the Ship object with the correct width and height.
+
+Make sure to update the gameLoop function to take the ship object as a parameter and use it throughout the function.
+
+### Status
+
+At this point I followed the first recommendation, since it was simple Full disclosure, I adjusted the bullet origination point in the ship myself. Could have asked ChatGPT to do it, but I lost patience. This is the new line:
+```javascript
+const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2);
+```

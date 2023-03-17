@@ -30,8 +30,8 @@
         this.x = x;
         this.y = y;
         this.vel = 5;
-        this.width = shipImg.width;
-        this.height = shipImg.height;
+        this.width = 64;
+        this.height = 38;
       }
 
       draw() {
@@ -127,7 +127,7 @@
       keys[e.key] = true;
 
       if (e.key === ' ') {
-        const bullet = new Bullet(ship.x + ship.width / 2, ship.y);
+        const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2);
         bullets.push(bullet);
       }
 
