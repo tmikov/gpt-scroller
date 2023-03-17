@@ -79,3 +79,19 @@ Here are the main changes to the code:
 - Updated the bullet handling code in the gameLoop() function to check for collisions between each bullet and enemy using the checkCollision() function.
 - If a collision is detected, both the bullet and enemy are removed from their respective arrays using splice().
 - Now, when bullets collide with enemies, they will both be removed from the game.
+
+### Q: Good job! Can we add a background?
+
+A: Certainly! To add a background, you'll need an image file to use as the background. In this example, I'll show you how to add a scrolling background using an image. Make sure you have a background image named 'background.png' in the same directory as the HTML file.
+
+Here's the updated code to add a scrolling background to the side-scrolling game:
+
+...
+
+Here are the main changes to the code:
+
+- Added a backgroundImg variable to load the background image.
+- Added a backgroundX variable to store the current x-coordinate of the background.
+- Added a backgroundSpeed variable to control the speed of the scrolling background.
+- Updated the gameLoop() function to draw the background and update its position.
+- Now, the game will have a scrolling background. The background will scroll to the left at a constant speed, creating a parallax effect. The scrolling will loop, creating an infinitely scrolling background.

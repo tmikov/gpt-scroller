@@ -22,6 +22,9 @@
     const enemyImg = new Image();
     enemyImg.src = 'enemy.png';
 
+    const backgroundImg = new Image();
+    backgroundImg.src = 'background.png';
+
     class Ship {
       constructor(x, y) {
         this.x = x;
@@ -115,6 +118,9 @@
     let enemySpawnCounter = 0;
     const enemySpawnRate = 120;
 
+    let backgroundX = 0;
+    const backgroundSpeed = 1;
+
     const keys = {};
 
     window.addEventListener('keydown', (e) => {
@@ -147,6 +153,15 @@
     function gameLoop() {
       ctx.fillStyle = 'rgba(0, 0, 30, 1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(backgroundImg, backgroundX, 0);
+      ctx.drawImage(backgroundImg, backgroundX + backgroundImg.width, 0);
+
+      backgroundX -= backgroundSpeed;
+
+      if (backgroundX <= -backgroundImg.width) {
+        backgroundX = 0;
+      }
+
 
       ship.update(keys);
       ship.draw();
