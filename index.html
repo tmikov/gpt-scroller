@@ -19,6 +19,9 @@
     const shipImg = new Image();
     shipImg.src = 'ship.png';
 
+    const enemyImg = new Image();
+    enemyImg.src = 'enemy.png';
+
     class Ship {
       constructor(x, y) {
         this.x = x;
@@ -67,6 +70,24 @@
       }
     }
 
+    class Enemy {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = enemyImg.width;
+        this.height = enemyImg.height;
+        this.vel = 3;
+      }
+
+      draw() {
+        ctx.drawImage(enemyImg, this.x, this.y);
+      }
+
+      update() {
+        this.x -= this.vel;
+      }
+    }
+
     class Bomb {
       constructor(x, y) {
         this.x = x;
@@ -89,6 +110,10 @@
     const ship = new Ship(canvas.width / 2, canvas.height - 100);
     const bullets = [];
     const bombs = [];
+    const enemies = [];
+
+    let enemySpawnCounter = 0;
+    const enemySpawnRate = 120;
 
     const keys = {};
 
@@ -110,6 +135,15 @@
       keys[e.key] = false;
     });
 
+    function checkCollision(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
+
     function gameLoop() {
       ctx.fillStyle = 'rgba(0, 0, 30, 1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -117,11 +151,18 @@
       ship.update(keys);
       ship.draw();
 
-      bullets.forEach((bullet, index) => {
+      bullets.forEach((bullet, bulletIndex) => {
         bullet.update();
         bullet.draw();
-        if (bullet.y < 0) {
-          bullets.splice(index, 1);
+        if (bullet.x > canvas.width) {
+          bullets.splice(bulletIndex, 1);
+        } else {
+            enemies.forEach((enemy, enemyIndex) => {
+              if (checkCollision(bullet, enemy)) {
+                bullets.splice(bulletIndex, 1);
+                enemies.splice(enemyIndex, 1);
+              }
+            });
         }
       });
 
@@ -130,6 +171,22 @@
         bomb.draw();
         if (bomb.y > canvas.height) {
           bombs.splice(index, 1);
+        }
+      });
+
+      enemySpawnCounter++;
+      if (enemySpawnCounter >= enemySpawnRate) {
+        const enemyY = Math.random() * (canvas.height - enemyImg.height);
+        const enemy = new Enemy(canvas.width, enemyY);
+        enemies.push(enemy);
+        enemySpawnCounter = 0;
+      }
+
+      enemies.forEach((enemy, index) => {
+        enemy.update();
+        enemy.draw();
+        if (enemy.x < -enemy.width) {
+          enemies.splice(index, 1);
         }
       });
 

@@ -51,3 +51,31 @@ update() {
 ```
 
 This change will make the bullets shoot to the right. Also, I've modified the width and height of the bullet to better match horizontal movement. Now, when you press the SPACE key, the bullets will shoot to the right.
+
+### Q: Can we add enemies?
+
+A: Sure! Here's an updated version of the side-scrolling game in JavaScript with enemies added. In this example, enemies will spawn at random heights on the right side of the canvas and move towards the left.
+
+Before running the code, make sure you have an enemy image named 'enemy.png' in the same directory as the HTML file. This image will represent the enemy in the game. You can create a simple image in any image editor or find one online.
+
+Here are the main changes to the code:
+
+- Added an enemyImg variable to load the enemy image.
+- Created an Enemy class with a constructor, draw() method, and update() method.
+- Added an enemies array to store the enemy instances.
+- Added a enemySpawnCounter variable to control the rate of enemy spawning.
+- Updated the gameLoop() function to handle enemy spawning, updating, drawing, and removing enemies that move off the screen.
+
+### Q: Good job! Can we kill the enemies with bullets?
+> NOTE: this question was flagged as possibly violating the content policy, for obvious reasons, but the bot understood it correctly in the context.
+
+A: Absolutely! To kill enemies with bullets, we'll need to implement collision detection between bullets and enemies. When a bullet collides with an enemy, both the bullet and enemy should be removed from the game. Here's the updated code to handle this:
+
+...
+
+Here are the main changes to the code:
+
+- Added a checkCollision() function that takes two rectangular objects and checks if they are colliding.
+- Updated the bullet handling code in the gameLoop() function to check for collisions between each bullet and enemy using the checkCollision() function.
+- If a collision is detected, both the bullet and enemy are removed from their respective arrays using splice().
+- Now, when bullets collide with enemies, they will both be removed from the game.
