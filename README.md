@@ -1,6 +1,8 @@
 # gpt-scroller
 A simple side scroller game developed by ChatGPT4
 
+Sound Effect from [Pixabay](https://pixabay.com/sound-effects/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=music&amp;utm_content=6055).
+
 These are the steps I took with GPT4. GPT4's responses are omitted most of the time, but the state of the source aaccurately represents the changes it asked me to do each time.
 
 ### Q: Can you create an example side scrolling game, with a ship that can shoot and drop bombs?

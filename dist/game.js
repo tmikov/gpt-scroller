@@ -108,7 +108,6 @@ class Particle {
         this.alpha = 1 - (this.life / this.maxLife);
     }
     draw() {
-        // ctx.fillStyle = "orange";
         ctx.fillStyle = `rgba(255, 128, 0, ${this.alpha})`;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
@@ -148,11 +147,23 @@ let enemySpawnCounter = 0;
 const enemySpawnRate = 120;
 let backgroundX = 0;
 const backgroundSpeed = 1;
+const explosionSound = new Audio("explosion-6055.mp3");
+const laserSound = new Audio("laser_gun_sound-40813.mp3");
 function checkCollision(rect1, rect2) {
     return (rect1.x < rect2.x + rect2.width &&
         rect1.x + rect1.width > rect2.x &&
         rect1.y < rect2.y + rect2.height &&
         rect1.y + rect1.height > rect2.y);
+}
+function playSound(sound) {
+    const soundClone = sound.cloneNode(true);
+    soundClone.volume = 0.5; // Adjust the volume (0.0 to 1.0)
+    soundClone.play();
+}
+function createExplosion(x, y) {
+    const explosion = new Explosion(x, y);
+    explosions.push(explosion);
+    playSound(explosionSound);
 }
 loadImages(images).then((loadedImages) => {
     const shipImg = loadedImages.ship;
@@ -166,6 +177,7 @@ loadImages(images).then((loadedImages) => {
             if (e.code === 'Space') {
                 const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2 - 2.5);
                 bullets.push(bullet);
+                playSound(laserSound);
             }
             if (e.code === 'KeyB') {
                 const bomb = new Bomb(ship.x + ship.width / 2 - 5, ship.y + ship.height);
@@ -216,8 +228,7 @@ loadImages(images).then((loadedImages) => {
             }
             bullets.forEach((bullet, j) => {
                 if (checkCollision(bullet, enemy)) {
-                    const explosion = new Explosion(enemy.x, enemy.y);
-                    explosions.push(explosion);
+                    createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                     bullets.splice(j, 1);
                     enemies.splice(i, 1);
                 }

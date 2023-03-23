@@ -20,3 +20,9 @@ A: To make the particles gradually fade before they disappear, we can modify the
 ...
 
 This modification will make the particles fade gradually as they approach the end of their life, creating a more natural-looking explosion effect.
+
+### Q: I would like to add a sound effect for the explosion.
+
+A: To add a sound effect for the explosion, you'll need to load an audio file (preferably in MP3 or WAV format) and play it when an explosion is created. Here's how to do this in TypeScript:
+
+...

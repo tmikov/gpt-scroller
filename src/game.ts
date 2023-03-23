@@ -208,6 +208,9 @@ const enemySpawnRate = 120;
 let backgroundX = 0;
 const backgroundSpeed = 1;
 
+const explosionSound = new Audio("explosion-6055.mp3");
+const laserSound = new Audio("laser_gun_sound-40813.mp3");
+
 function checkCollision(rect1: { x: number; y: number; width: number; height: number }, rect2: { x: number; y: number; width: number; height: number }): boolean {
     return (
         rect1.x < rect2.x + rect2.width &&
@@ -215,6 +218,18 @@ function checkCollision(rect1: { x: number; y: number; width: number; height: nu
         rect1.y < rect2.y + rect2.height &&
         rect1.y + rect1.height > rect2.y
     );
+}
+
+function playSound(sound: HTMLAudioElement) {
+    const soundClone = sound.cloneNode(true) as HTMLAudioElement;
+    soundClone.volume = 0.5; // Adjust the volume (0.0 to 1.0)
+    soundClone.play();
+}
+
+function createExplosion(x: number, y: number) {
+    const explosion = new Explosion(x, y);
+    explosions.push(explosion);
+    playSound(explosionSound);
 }
 
 loadImages(images).then((loadedImages) => {
@@ -231,6 +246,7 @@ loadImages(images).then((loadedImages) => {
             if (e.code === 'Space') {
                 const bullet = new Bullet(ship.x + ship.width, ship.y + ship.height / 2 - 2.5);
                 bullets.push(bullet);
+                playSound(laserSound);
             }
 
             if (e.code === 'KeyB') {
@@ -295,8 +311,7 @@ loadImages(images).then((loadedImages) => {
 
             bullets.forEach((bullet, j) => {
                 if (checkCollision(bullet, enemy)) {
-                    const explosion = new Explosion(enemy.x, enemy.y);
-                    explosions.push(explosion);
+                    createExplosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2);
 
                     bullets.splice(j, 1);
                     enemies.splice(i, 1);
