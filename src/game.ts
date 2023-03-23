@@ -126,9 +126,81 @@ class Enemy {
     }
 }
 
+class Particle {
+    x: number;
+    y: number;
+    size: number;
+    speedX: number;
+    speedY: number;
+    life: number;
+    maxLife: number;
+    alpha: number;
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 2 + 1;
+        this.speedX = Math.random() * 4 - 2;
+        this.speedY = Math.random() * 4 - 2;
+        this.life = 0;
+        this.maxLife = Math.random() * 30 + 50;
+        this.alpha = 1;
+    }
+
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.life++;
+        this.alpha = 1 - (this.life / this.maxLife);
+    }
+
+    draw() {
+        ctx.fillStyle = `rgba(255, 128, 0, ${this.alpha})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    isAlive() {
+        return this.life < this.maxLife;
+    }
+}
+
+class Explosion {
+    x: number;
+    y: number;
+    particles: Particle[];
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+        this.particles = [];
+
+        for (let i = 0; i < 50; i++) {
+            this.particles.push(new Particle(x, y));
+        }
+    }
+
+    update() {
+        this.particles = this.particles.filter(particle => {
+            particle.update();
+            return particle.isAlive();
+        });
+    }
+
+    draw() {
+        this.particles.forEach(particle => particle.draw());
+    }
+
+    isAlive() {
+        return this.particles.length > 0;
+    }
+}
+
 const bullets: Bullet[] = [];
 const bombs: Bomb[] = [];
 const enemies: Enemy[] = [];
+let explosions: Explosion[] = [];
 
 let enemySpawnCounter = 0;
 const enemySpawnRate = 120;
@@ -223,11 +295,21 @@ loadImages(images).then((loadedImages) => {
 
             bullets.forEach((bullet, j) => {
                 if (checkCollision(bullet, enemy)) {
+                    const explosion = new Explosion(enemy.x, enemy.y);
+                    explosions.push(explosion);
+
                     bullets.splice(j, 1);
                     enemies.splice(i, 1);
                 }
             });
         });
+
+        for (const explosion of explosions) {
+            explosion.update();
+            explosion.draw();
+        }
+        explosions = explosions.filter(explosion => explosion.isAlive());
+
         requestAnimationFrame(gameLoop);
     }
 
