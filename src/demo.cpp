@@ -142,7 +142,10 @@ class Image {
 
 static sg_shader s_fill_sh = {};
 static sg_shader s_blit_sh = {};
+
+static sg_pipeline s_cur_pip = {};
 static sg_pipeline s_fill_pip = {};
+static sg_image s_cur_blit_image = {};
 static sg_pipeline s_blit_pip = {};
 
 static sg_bindings s_fill_bind = {};
@@ -171,15 +174,24 @@ static void load_images() {
   s_background_image = std::make_unique<Image>("background.png");
 }
 
-static void begin_fill() {
-  sg_apply_pipeline(s_fill_pip);
-  sg_apply_bindings(&s_fill_bind);
+static void reset_frame() {
+  s_cur_pip.id = 0;
+  s_cur_blit_image.id = 0;
+}
+
+static void _begin_fill() {
+  if (s_cur_pip.id != s_fill_pip.id) {
+    s_cur_pip = s_fill_pip;
+    sg_apply_pipeline(s_fill_pip);
+    sg_apply_bindings(&s_fill_bind);
+  }
 }
 
 static void draw_fill(float x, float y, float w, float h, sg_color color) {
   fill_vs_params_t fill_vs_params;
   fill_fs_params_t fill_fs_params;
 
+  _begin_fill();
   transformRect(x, y, w, h, fill_vs_params.transform);
   fill_fs_params = (fill_fs_params_t){.color = {color.r, color.g, color.b, color.a}};
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
@@ -190,6 +202,7 @@ static void draw_fill_px(float x, float y, float w, float h, sg_color color) {
   fill_vs_params_t fill_vs_params;
   fill_fs_params_t fill_fs_params;
 
+  _begin_fill();
   transformRectPx(x, y, w, h, fill_vs_params.transform);
   fill_fs_params = (fill_fs_params_t){.color = {color.r, color.g, color.b, color.a}};
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
@@ -197,20 +210,28 @@ static void draw_fill_px(float x, float y, float w, float h, sg_color color) {
   sg_draw(0, 4, 1);
 }
 
-static void begin_blit(Image *image) {
-  sg_apply_pipeline(s_blit_pip);
-  s_blit_bind.fs.images[SLOT_tex] = image->image_;
-  sg_apply_bindings(&s_blit_bind);
+static void _begin_blit(Image *image) {
+  if (s_cur_pip.id != s_blit_pip.id) {
+    s_cur_pip = s_blit_pip;
+    sg_apply_pipeline(s_blit_pip);
+  }
+  if (s_cur_blit_image.id != image->image_.id) {
+    s_cur_blit_image.id = image->image_.id;
+    s_blit_bind.fs.images[SLOT_tex] = image->image_;
+    sg_apply_bindings(&s_blit_bind);
+  }
 }
 
-static void draw_blit(float x, float y, float w, float h) {
+static void draw_blit(Image *image, float x, float y, float w, float h) {
   blit_vs_params_t blit_vs_params;
+  _begin_blit(image);
   transformRect(x, y, w, h, blit_vs_params.transform);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
   sg_draw(0, 4, 1);
 }
-static void draw_blit_px(float x, float y, float w, float h) {
+static void draw_blit_px(Image *image, float x, float y, float w, float h) {
   blit_vs_params_t blit_vs_params;
+  _begin_blit(image);
   transformRectPx(x, y, w, h, blit_vs_params.transform);
   sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
   sg_draw(0, 4, 1);
@@ -239,11 +260,8 @@ class Ship : public Actor {
       y += vel;
   }
 
-  static void begin() {
-    begin_blit(s_ship_image.get());
-  }
   void draw() const {
-    draw_blit_px(x, y, width, height);
+    draw_blit_px(s_ship_image.get(), x, y, width, height);
   }
 };
 
@@ -255,11 +273,8 @@ class Enemy : public Actor {
     x -= vel;
   }
 
-  static void begin() {
-    begin_blit(s_enemy_image.get());
-  }
   void draw() const {
-    draw_blit_px(x, y, width, height);
+    draw_blit_px(s_enemy_image.get(), x, y, width, height);
   }
 };
 
@@ -269,10 +284,6 @@ class Bullet : public Actor {
 
   void update() {
     x += vel;
-  }
-
-  static void begin() {
-    begin_fill();
   }
 
   void draw() const {
@@ -299,10 +310,6 @@ class Particle {
     y += speedY;
     ++life;
     alpha = 1 - (life / maxLife);
-  }
-
-  static void begin() {
-    begin_fill();
   }
 
   void draw() {
@@ -334,10 +341,6 @@ class Explosion {
       }
       ++i;
     }
-  }
-
-  static void begin() {
-    Particle::begin();
   }
 
   void draw() {
@@ -459,11 +462,11 @@ void app_cleanup() {
 }
 
 void app_event(const sapp_event *ev) {
-  if (ev->type == SAPP_EVENTTYPE_QUIT_REQUESTED) {
-    return;
-  }
-
   if (ev->type == SAPP_EVENTTYPE_KEY_DOWN) {
+    if (ev->key_code == SAPP_KEYCODE_Q && (ev->modifiers & SAPP_MODIFIER_SUPER)) {
+      sapp_request_quit();
+      return;
+    }
     s_keys[ev->key_code] = true;
     if (ev->key_code == SAPP_KEYCODE_SPACE) {
       s_bullets.emplace_back(s_ship->x + s_ship->width, s_ship->y + s_ship->height / 2.0 - 2.5);
@@ -484,6 +487,8 @@ static void createExplosion(float x, float y) {
 }
 
 void app_frame() {
+  reset_frame();
+
   uint64_t now = stm_now();
   ++s_frame_count;
 
@@ -502,9 +507,13 @@ void app_frame() {
   // Begin and end pass
   sg_begin_default_pass(&pass_action, sapp_width(), sapp_height());
 
-  begin_blit(s_background_image.get());
-  draw_blit_px(0 + s_backgroundX, 0, s_background_image->w_, ASSUMED_H);
-  draw_blit_px(s_backgroundX + s_background_image->w_, 0, s_background_image->w_, ASSUMED_H);
+  draw_blit_px(s_background_image.get(), 0 + s_backgroundX, 0, s_background_image->w_, ASSUMED_H);
+  draw_blit_px(
+      s_background_image.get(),
+      s_backgroundX + s_background_image->w_,
+      0,
+      s_background_image->w_,
+      ASSUMED_H);
   s_backgroundX -= s_backgroundSpeed;
 
   if (s_backgroundX <= -s_background_image->w_) {
@@ -512,10 +521,8 @@ void app_frame() {
   }
 
   s_ship->update();
-  s_ship->begin();
   s_ship->draw();
 
-  Bullet::begin();
   for (long i = 0; i < s_bullets.size();) {
     s_bullets[i].update();
     s_bullets[i].draw();
@@ -534,7 +541,6 @@ void app_frame() {
     s_enemySpawnCounter = 0;
   }
 
-  Enemy::begin();
   for (long i = 0; i < s_enemies.size();) {
     s_enemies[i].update();
     s_enemies[i].draw();
@@ -570,7 +576,6 @@ void app_frame() {
     ++i;
   }
 
-  Explosion::begin();
   for (long i = 0; i < s_explosions.size();) {
     s_explosions[i].update();
     s_explosions[i].draw();
