@@ -12,6 +12,8 @@
 #include "soloud_wav.h"
 #include "soloud_wavstream.h"
 
+#include <deque>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -143,13 +145,19 @@ class Image {
 static sg_shader s_fill_sh = {};
 static sg_shader s_blit_sh = {};
 
-static sg_pipeline s_cur_pip = {};
 static sg_pipeline s_fill_pip = {};
-static sg_image s_cur_blit_image = {};
 static sg_pipeline s_blit_pip = {};
+static sg_sampler s_sampler = {};
 
-static sg_bindings s_fill_bind = {};
-static sg_bindings s_blit_bind = {};
+/// Map from an image id to an index in s_img_list.
+static std::map<uint32_t, unsigned> s_img_index{};
+/// List of vertices in the vertex pool associated with an image.
+static std::vector<std::pair<sg_image, std::vector<float> *>> s_img_list{};
+/// Lists of triangle vertices. {x, y, u, v}
+static std::deque<std::vector<float>> s_vert_pool{};
+
+/// List of fill triangle vertices. {x, y, r, g, b, a};
+static std::vector<float> s_fill_verts{};
 
 static int s_frame_count = 0;
 static double s_fps = 0;
@@ -174,67 +182,154 @@ static void load_images() {
   s_background_image = std::make_unique<Image>("background.png");
 }
 
-static void reset_frame() {
-  s_cur_pip.id = 0;
-  s_cur_blit_image.id = 0;
+static void push_rect(std::vector<float> &vec, float x, float y, float w, float h) {
+  /*
+   * Triangle strip:
+   *    2  |  0
+   * ------+------
+   *    3  |  1
+   */
+  vec.insert(vec.end(), {x + w, y + h, 1, 1});
+  vec.insert(vec.end(), {x + w, y, 1, 0});
+  vec.insert(vec.end(), {x, y + h, 0, 1});
+
+  vec.insert(vec.end(), {x + w, y, 1, 0});
+  vec.insert(vec.end(), {x, y + h, 0, 1});
+  vec.insert(vec.end(), {x, y, 0, 0});
 }
 
-static void _begin_fill() {
-  if (s_cur_pip.id != s_fill_pip.id) {
-    s_cur_pip = s_fill_pip;
-    sg_apply_pipeline(s_fill_pip);
-    sg_apply_bindings(&s_fill_bind);
-  }
+static void
+push_rect_with_color(std::vector<float> &vec, float x, float y, float w, float h, sg_color color) {
+  /*
+   * Triangle strip:
+   *    2  |  0
+   * ------+------
+   *    3  |  1
+   */
+  vec.insert(vec.end(), {x + w, y + h});
+  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+  vec.insert(vec.end(), {x + w, y});
+  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+  vec.insert(vec.end(), {x, y + h});
+  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+
+  vec.insert(vec.end(), {x + w, y});
+  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+  vec.insert(vec.end(), {x, y + h});
+  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+  vec.insert(vec.end(), {x, y});
+  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
 }
 
-static void draw_fill(float x, float y, float w, float h, sg_color color) {
-  fill_vs_params_t fill_vs_params;
-  fill_fs_params_t fill_fs_params;
-
-  _begin_fill();
-  transformRect(x, y, w, h, fill_vs_params.transform);
-  fill_fs_params = (fill_fs_params_t){.color = {color.r, color.g, color.b, color.a}};
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
-  sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_fill_fs_params, SG_RANGE(fill_fs_params));
-  sg_draw(0, 4, 1);
-}
 static void draw_fill_px(float x, float y, float w, float h, sg_color color) {
-  fill_vs_params_t fill_vs_params;
-  fill_fs_params_t fill_fs_params;
+  //-1, 1       1, 1
+  //
+  //       0,0
+  //
+  //-1,-1       1, -1
+  x = x * INV_ASSUMED_W * 2 - 1;
+  y = -(y * INV_ASSUMED_H * 2 - 1);
+  w = w * INV_ASSUMED_W * 2;
+  h = -(h * INV_ASSUMED_H * 2);
 
-  _begin_fill();
-  transformRectPx(x, y, w, h, fill_vs_params.transform);
-  fill_fs_params = (fill_fs_params_t){.color = {color.r, color.g, color.b, color.a}};
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
-  sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_fill_fs_params, SG_RANGE(fill_fs_params));
-  sg_draw(0, 4, 1);
+  push_rect_with_color(s_fill_verts, x, y, w, h, color);
 }
 
-static void _begin_blit(Image *image) {
-  if (s_cur_pip.id != s_blit_pip.id) {
-    s_cur_pip = s_blit_pip;
-    sg_apply_pipeline(s_blit_pip);
-  }
-  if (s_cur_blit_image.id != image->image_.id) {
-    s_cur_blit_image.id = image->image_.id;
-    s_blit_bind.fs.images[SLOT_tex] = image->image_;
-    sg_apply_bindings(&s_blit_bind);
-  }
-}
-
-static void draw_blit(Image *image, float x, float y, float w, float h) {
-  blit_vs_params_t blit_vs_params;
-  _begin_blit(image);
-  transformRect(x, y, w, h, blit_vs_params.transform);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
-  sg_draw(0, 4, 1);
-}
 static void draw_blit_px(Image *image, float x, float y, float w, float h) {
-  blit_vs_params_t blit_vs_params;
-  _begin_blit(image);
-  transformRectPx(x, y, w, h, blit_vs_params.transform);
-  sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
-  sg_draw(0, 4, 1);
+  // If this is a new image, add it to the image list and create a new vertex list.
+  auto [it, inserted] = s_img_index.try_emplace(image->image_.id, 0);
+  if (inserted) {
+    s_vert_pool.emplace_back();
+    s_img_list.emplace_back(image->image_, &s_vert_pool.back());
+    it->second = s_img_list.size() - 1;
+  }
+
+  //-1, 1       1, 1
+  //
+  //       0,0
+  //
+  //-1,-1       1, -1
+  x = x * INV_ASSUMED_W * 2 - 1;
+  y = -(y * INV_ASSUMED_H * 2 - 1);
+  w = w * INV_ASSUMED_W * 2;
+  h = -(h * INV_ASSUMED_H * 2);
+
+  push_rect(*s_img_list[it->second].second, x, y, w, h);
+}
+
+static void reset_blits() {
+  for (auto &verts : s_vert_pool)
+    verts.clear();
+  s_fill_verts.clear();
+}
+
+static void render_blits() {
+  {
+    sg_apply_pipeline(s_blit_pip);
+
+    sg_bindings blit_bind = {};
+    blit_bind.fs.samplers[SLOT_samp] = s_sampler;
+
+    blit_vs_params_t blit_vs_params;
+    //  transformRectPx(0, 0, 800, 600, blit_vs_params.transform);
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x)
+        blit_vs_params.transform[y * 4 + x] = x == y ? 1 : 0;
+
+    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
+
+    //  printf("\n");
+
+    for (auto &img : s_img_list) {
+      if (img.second->empty())
+        continue;
+      //    printf("img: %d", img.first.id);
+      //    for (size_t i = 0; i < img.second->size(); i += 12) {
+      //      printf(
+      //          "  [(%.3f, %.3f), (%.3f, %.3f), (%.3f, %.3f)]\n",
+      //          img.second->at(i),
+      //          img.second->at(i + 1),
+      //          img.second->at(i + 4),
+      //          img.second->at(i + 5),
+      //          img.second->at(i + 8),
+      //          img.second->at(i + 9));
+      //    }
+      //    printf("\n");
+      blit_bind.fs.images[SLOT_tex] = img.first;
+      blit_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
+          .data = {.ptr = img.second->data(), .size = img.second->size() * sizeof(float)},
+          .label = "blit vertices",
+      });
+      sg_apply_bindings(&blit_bind);
+      sg_draw(0, img.second->size() / 4, 1);
+      sg_destroy_buffer(blit_bind.vertex_buffers[0]);
+    }
+  }
+
+  if (!s_fill_verts.empty()) {
+    sg_apply_pipeline(s_fill_pip);
+
+    fill_vs_params_t fill_vs_params;
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x)
+        fill_vs_params.transform[y * 4 + x] = x == y ? 1 : 0;
+
+    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
+
+    sg_bindings fill_bind = {};
+    fill_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
+        .data = {.ptr = s_fill_verts.data(), .size = s_fill_verts.size() * sizeof(float)},
+        .label = "fill vertices",
+    });
+    sg_apply_bindings(&fill_bind);
+
+    sg_draw(0, s_fill_verts.size() / 6, 1);
+    sg_destroy_buffer(fill_bind.vertex_buffers[0]);
+  }
+}
+
+static void reset_frame() {
+  reset_blits();
 }
 
 class Actor {
@@ -358,33 +453,17 @@ static std::unique_ptr<Ship> s_ship;
 static std::vector<Bullet> s_bullets;
 static std::vector<Enemy> s_enemies;
 static std::vector<Explosion> s_explosions;
+static bool s_pause = false;
 
 void app_init() {
   stm_setup();
   s_last_fps_time = stm_now();
 
-  sg_desc desc = {.context = sapp_sgcontext()};
+  sg_desc desc = {.context = sapp_sgcontext(), .logger.func = slog_func};
   sg_setup(&desc);
 
   load_images();
-  s_sound = std::make_unique<Sound>(true);
-
-  /*
-   * Triangle strip:
-   *    2  |  0
-   * ------+------
-   *    3  |  1
-   */
-  static const float vertices1[][2] = {
-      {0.5f, 0.5f},
-      {0.5f, -0.5f},
-      {-0.5f, 0.5f},
-      {-0.5f, -0.5f},
-  };
-  s_fill_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
-      .data = SG_RANGE(vertices1),
-      .label = "rect vertices",
-  });
+  s_sound = std::make_unique<Sound>(false);
 
   s_fill_sh = sg_make_shader(fill_shader_desc(sg_query_backend()));
 
@@ -395,6 +474,7 @@ void app_init() {
               .attrs =
                   {
                       [ATTR_vs_fill_position].format = SG_VERTEXFORMAT_FLOAT2,
+                      [ATTR_vs_fill_color].format = SG_VERTEXFORMAT_FLOAT4,
                   },
           },
       .colors[0].blend =
@@ -403,23 +483,8 @@ void app_init() {
               .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
               .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
           },
-      .primitive_type = SG_PRIMITIVETYPE_TRIANGLE_STRIP,
+      .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
       .label = "fill-pipeline",
-  });
-
-  static const float vertices2[][4] = {
-      {0.5f, 0.5f, 1, 0},
-      {0.5f, -0.5f, 1, 1},
-      {-0.5f, 0.5f, 0, 0},
-      {-0.5f, -0.5f, 0, 1},
-  };
-  s_blit_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
-      .data = SG_RANGE(vertices2),
-      .label = "blit vertices",
-  });
-  s_blit_bind.fs.samplers[SLOT_samp] = sg_make_sampler(sg_sampler_desc{
-      .min_filter = SG_FILTER_LINEAR,
-      .mag_filter = SG_FILTER_LINEAR,
   });
 
   s_blit_sh = sg_make_shader(blit_shader_desc(sg_query_backend()));
@@ -440,8 +505,13 @@ void app_init() {
               .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
               .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
           },
-      .primitive_type = SG_PRIMITIVETYPE_TRIANGLE_STRIP,
+      .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
       .label = "blit-pipeline",
+  });
+
+  s_sampler = sg_make_sampler(sg_sampler_desc{
+      .min_filter = SG_FILTER_LINEAR,
+      .mag_filter = SG_FILTER_LINEAR,
   });
 
   sdtx_desc_t sdtx_desc = {.fonts = {sdtx_font_kc854()}, .logger.func = slog_func};
@@ -474,6 +544,8 @@ void app_event(const sapp_event *ev) {
     }
   } else if (ev->type == SAPP_EVENTTYPE_KEY_UP) {
     s_keys[ev->key_code] = false;
+    if (ev->key_code == SAPP_KEYCODE_P)
+      s_pause = !s_pause;
   }
 }
 
@@ -514,40 +586,49 @@ void app_frame() {
       0,
       s_background_image->w_,
       ASSUMED_H);
-  s_backgroundX -= s_backgroundSpeed;
 
-  if (s_backgroundX <= -s_background_image->w_) {
-    s_backgroundX = 0;
+  if (!s_pause) {
+    s_backgroundX -= s_backgroundSpeed;
+    if (s_backgroundX <= -s_background_image->w_)
+      s_backgroundX = 0;
   }
 
   s_ship->update();
   s_ship->draw();
 
   for (long i = 0; i < s_bullets.size();) {
-    s_bullets[i].update();
-    s_bullets[i].draw();
-    if (s_bullets[i].x > ASSUMED_W) {
-      s_bullets.erase(s_bullets.begin() + i);
-      continue;
+    if (!s_pause) {
+      s_bullets[i].update();
+      if (s_bullets[i].x > ASSUMED_W) {
+        s_bullets.erase(s_bullets.begin() + i);
+        continue;
+      }
     }
-
+    s_bullets[i].draw();
     ++i;
   }
 
-  ++s_enemySpawnCounter;
-  if (s_enemySpawnCounter >= s_enemySpawnRate) {
-    float y = mathRandom(ASSUMED_H - 64);
-    s_enemies.emplace_back(ASSUMED_W, y);
-    s_enemySpawnCounter = 0;
+  if (!s_pause) {
+    ++s_enemySpawnCounter;
+    if (s_enemySpawnCounter >= s_enemySpawnRate) {
+      float y = mathRandom(ASSUMED_H - 64);
+      s_enemies.emplace_back(ASSUMED_W, y);
+      s_enemySpawnCounter = 0;
+    }
   }
 
   for (long i = 0; i < s_enemies.size();) {
+    if (s_pause) {
+      s_enemies[i++].draw();
+      continue;
+    }
+
     s_enemies[i].update();
-    s_enemies[i].draw();
     if (s_enemies[i].x < -s_enemies[i].width) {
       s_enemies.erase(s_enemies.begin() + i);
       continue;
     }
+    s_enemies[i].draw();
 
     bool destroy = false;
     if (checkCollision(*s_ship, s_enemies[i])) {
@@ -577,6 +658,10 @@ void app_frame() {
   }
 
   for (long i = 0; i < s_explosions.size();) {
+    if (s_pause) {
+      s_explosions[i++].draw();
+      continue;
+    }
     s_explosions[i].update();
     s_explosions[i].draw();
     if (!s_explosions[i].isAlive()) {
@@ -585,6 +670,8 @@ void app_frame() {
     }
     ++i;
   }
+
+  render_blits();
 
   sdtx_canvas((float)sapp_width(), (float)sapp_height());
   sdtx_printf("FPS: %d", (int)(s_fps + 0.5));

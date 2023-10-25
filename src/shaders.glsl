@@ -6,18 +6,19 @@ uniform fill_vs_params {
   mat4 transform;
 };
 in vec2 position;
+in vec4 color;
+out vec4 vs_color;
 void main() {
   gl_Position = transform * vec4(position, 0.0, 1.0);
+  vs_color = color;
 }
 #pragma sokol @end
 
 #pragma sokol @fs fs_fill
-uniform fill_fs_params {
-  vec4 color;
-};
+in vec4 vs_color;
 out vec4 frag_color;
 void main() {
-  frag_color = color;
+  frag_color = vs_color;
 }
 #pragma sokol @end
 
