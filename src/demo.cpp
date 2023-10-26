@@ -463,7 +463,7 @@ void app_init() {
   sg_setup(&desc);
 
   load_images();
-  s_sound = std::make_unique<Sound>(false);
+  s_sound = std::make_unique<Sound>(true);
 
   s_fill_sh = sg_make_shader(fill_shader_desc(sg_query_backend()));
 
