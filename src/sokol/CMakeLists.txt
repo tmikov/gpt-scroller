@@ -3,15 +3,17 @@ set(SOKOL_HEADERS
         sokol_debugtext.h
         sokol_gfx.h
         sokol_glue.h
+        sokol_imgui.h
         sokol_log.h
         sokol_time.h)
+set(SOKOL_DEFINES)
 
 if (EMSCRIPTEN)
     add_definitions(-DSOKOL_GLES2)
     add_library(sokol STATIC sokol.c ${SOKOL_HEADERS})
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
 elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-    add_definitions(-DSOKOL_METAL)
+    set(SOKOL_DEFINES ${SOKOL_DEFINES} -DSOKOL_METAL)
     add_library(sokol STATIC sokol.c ${SOKOL_HEADERS})
     target_compile_options(sokol PRIVATE -x objective-c)
     target_link_libraries(sokol PUBLIC
@@ -20,12 +22,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
             "-framework MetalKit"
             "-framework Metal")
 else()
-    add_definitions(-DSOKOL_GLCORE33)
+    set(SOKOL_DEFINES ${SOKOL_DEFINES} -DSOKOL_GLCORE33)
     add_library(sokol STATIC sokol.c ${SOKOL_HEADERS})
     if (CMAKE_SYSTEM_NAME STREQUAL Linux)
         target_link_libraries(sokol INTERFACE X11 Xi Xcursor GL dl m)
         target_link_libraries(sokol PUBLIC Threads::Threads)
     endif()
 endif()
-#target_link_libraries(sokol PUBLIC cimgui)
+target_link_libraries(sokol PUBLIC cimgui)
 target_include_directories(sokol INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(sokol PUBLIC ${SOKOL_DEFINES})

@@ -1,8 +1,24 @@
+#=== LIBRARY: cimgui + Dear ImGui
+add_library(cimgui STATIC
+        cimgui/cimgui.cpp
+        cimgui/cimgui.h
+        cimgui/imgui/imgui.cpp
+        cimgui/imgui/imgui.h
+        cimgui/imgui/imgui_widgets.cpp
+        cimgui/imgui/imgui_draw.cpp
+        cimgui/imgui/imgui_tables.cpp
+        cimgui/imgui/imgui_demo.cpp)
+target_include_directories(cimgui INTERFACE cimgui)
+
 add_subdirectory(sokol)
 add_subdirectory(stb)
 
 include_directories(${CMAKE_SOURCE_DIR}/external/soloud/include)
 
+add_executable(demo demo.cpp)
+target_link_libraries(demo sokol stb cimgui soloud)
+
+set(SHERMES /Users/tmikov/work/hws/sh-debug/bin/shermes)
 set(HERMES_BUILD /Users/tmikov/work/hws/sh-debug)
 set(HERMES_SRC /Users/tmikov/fbhermes/xplat/static_h)
 
@@ -12,13 +28,8 @@ include_directories(${HERMES_SRC}/Public)
 include_directories(${HERMES_SRC}/API)
 include_directories(${HERMES_SRC}/API/jsi)
 
-add_executable(demo demo.cpp)
-target_link_libraries(demo sokol stb soloud)
-
 add_library(scroller scroller.cpp)
 target_link_libraries(scroller sokol stb)
-
-set(SHERMES /Users/tmikov/work/hws/sh-debug/bin/shermes)
 
 add_custom_command(OUTPUT jsdemo
         COMMAND ${SHERMES} $<$<CONFIG:Debug>:-g3> -typed asciiz.js sapp.js demo.js

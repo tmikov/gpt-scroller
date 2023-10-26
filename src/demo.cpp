@@ -5,6 +5,10 @@
 #include "sokol_time.h"
 #include "stb_image.h"
 
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+#include "cimgui.h"
+#include "sokol_imgui.h"
+
 // Must be separate to avoid reordering.
 #include "sokol_debugtext.h"
 
@@ -461,6 +465,7 @@ void app_init() {
 
   sg_desc desc = {.context = sapp_sgcontext(), .logger.func = slog_func};
   sg_setup(&desc);
+  simgui_setup(simgui_desc_t{});
 
   load_images();
   s_sound = std::make_unique<Sound>(true);
@@ -532,6 +537,9 @@ void app_cleanup() {
 }
 
 void app_event(const sapp_event *ev) {
+  if (simgui_handle_event(ev))
+    return;
+  
   if (ev->type == SAPP_EVENTTYPE_KEY_DOWN) {
     if (ev->key_code == SAPP_KEYCODE_Q && (ev->modifiers & SAPP_MODIFIER_SUPER)) {
       sapp_request_quit();
@@ -558,7 +566,29 @@ static void createExplosion(float x, float y) {
   s_sound->play(s_sound->explosion);
 }
 
+static sg_pass_action s_pass_action = {
+    .colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 0}}};
+
+static void gui_frame() {
+  simgui_new_frame({
+      .width = sapp_width(),
+      .height = sapp_height(),
+      .delta_time = sapp_frame_duration(),
+      .dpi_scale = sapp_dpi_scale(),
+  });
+
+  /*=== UI CODE STARTS HERE ===*/
+  igSetNextWindowPos((ImVec2){10,10}, ImGuiCond_Once, (ImVec2){0,0});
+  igSetNextWindowSize((ImVec2){400, 100}, ImGuiCond_Once);
+  igBegin("Hello Dear ImGui!", 0, ImGuiWindowFlags_None);
+  igColorEdit3("Background", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
+  igEnd();
+  /*=== UI CODE ENDS HERE ===*/
+}
+
 void app_frame() {
+  gui_frame();
+
   reset_frame();
 
   uint64_t now = stm_now();
@@ -572,12 +602,8 @@ void app_frame() {
     s_last_fps_time = now;
   }
 
-  // Setup pass action to clear the framebuffer with yellow color
-  sg_pass_action pass_action = {
-      .colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 0}}};
-
   // Begin and end pass
-  sg_begin_default_pass(&pass_action, sapp_width(), sapp_height());
+  sg_begin_default_pass(&s_pass_action, sapp_width(), sapp_height());
 
   draw_blit_px(s_background_image.get(), 0 + s_backgroundX, 0, s_background_image->w_, ASSUMED_H);
   draw_blit_px(
@@ -676,6 +702,7 @@ void app_frame() {
   sdtx_canvas((float)sapp_width(), (float)sapp_height());
   sdtx_printf("FPS: %d", (int)(s_fps + 0.5));
   sdtx_draw();
+  simgui_render();
 
   sg_end_pass();
 

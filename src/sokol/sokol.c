@@ -13,5 +13,10 @@
 #include "sokol_log.h"
 #include "sokol_time.h"
 
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+#include "cimgui.h"
+#define SOKOL_IMGUI_IMPL
+#include "sokol_imgui.h"
+
 // Must be separate to avoid reordering.
 #include "sokol_debugtext.h"
