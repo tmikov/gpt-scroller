@@ -8,7 +8,6 @@
 #define SOKOL_IMPL
 #define SOKOL_NO_ENTRY // We define our own main() function
 #include "sokol_app.h"
-//#include "sokol_audio.h"
 #include "sokol_gfx.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
