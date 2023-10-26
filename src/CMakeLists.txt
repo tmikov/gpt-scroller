@@ -18,9 +18,9 @@ include_directories(${CMAKE_SOURCE_DIR}/external/soloud/include)
 add_executable(demo demo.cpp)
 target_link_libraries(demo sokol stb cimgui soloud)
 
-set(SHERMES /Users/tmikov/work/hws/sh-debug/bin/shermes)
-set(HERMES_BUILD /Users/tmikov/work/hws/sh-debug)
-set(HERMES_SRC /Users/tmikov/fbhermes/xplat/static_h)
+set(HERMES_BUILD "" CACHE STRING "Hermes build directory")
+set(HERMES_SRC $ENV{HOME}/fbsource/xplat/static_h CACHE STRING "Hermes source directory")
+set(SHERMES ${HERMES_BUILD}/bin/shermes CACHE STRING "shermes tool path")
 
 include_directories(${HERMES_BUILD}/lib/config)
 include_directories(${HERMES_SRC}/include)
