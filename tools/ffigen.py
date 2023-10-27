@@ -92,9 +92,9 @@ def to_c_name(id):
     if elem.tag == "PointerType":
         return to_c_name(elem.get("type")) + "*"
     if elem.tag == "Struct":
-        return elem.get("name")
+        return "struct " + elem.get("name")
     if elem.tag == "Union":
-        return  elem.get("name")
+        return  "union " + elem.get("name")
     if elem.tag == "ArrayType":
         return to_c_name(elem.get("type")) + "*"
 
@@ -172,6 +172,36 @@ if mode == "js":
         )
         print(js_declaration)
 
+    # Generate struct and union sizes.
+    for type in ["Struct", "Union"]:
+        for elem in root.findall(".//" + type):
+            name = elem.get("name")
+            size = int(elem.get("size")) // 8
+            print(f"const _sizeof_{name} = {size};")
+
+    # Generate struct accessors
+    for field in root.findall(".//Field"):
+        field_name = field.get("name")
+        field_type_id = field.get("type")
+        field_type_elem = id_to_element[field_type_id]
+
+        struct_name = id_to_element[field.get("context")].get("name")
+        sh_type = to_sh_name(field_type_id)
+
+        offset = int(field.get("offset")) // 8
+
+        # If the field is a struct, union, or array, return a pointer to 
+        # it and do not emit a setter.
+        if field_type_elem.tag == "Array" or field_type_elem.tag == "Union" or field_type_elem.tag == "Struct":
+            print(f"function get_{struct_name}_{field_name}(s: c_ptr): {sh_type} {{")
+            print(f"  \"inline\";\n  return _sh_ptr_add(s, {offset});\n}}")
+        else:
+            print(f"function get_{struct_name}_{field_name}(s: c_ptr): {sh_type} {{")
+            print(f"  \"inline\";\n  return _sh_ptr_read_{sh_type}(s, {offset});\n}}")
+
+            print(f"function set_{struct_name}_{field_name}(s: c_ptr, v: {sh_type}): void {{")
+            print(f"  \"inline\";\n  _sh_ptr_write_{sh_type}(s, {offset}, v);\n}}")
+
     # Generate JS constants from the ordered dictionary
     if len(constants_dict):
         print()
@@ -186,6 +216,8 @@ if mode == "js":
             enum_value_value = enum_value.get("init")
             print(f"const _{enum_name}_{enum_value_name} = {enum_value_value};")
 elif mode == "cwrap":
+    print("#include <stdbool.h>\n")
+
     # Generate C declarations
     for func in root.findall(".//Function"):
         return_id = func.get("returns")
