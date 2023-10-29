@@ -468,7 +468,7 @@ void app_init() {
   simgui_setup(simgui_desc_t{});
 
   load_images();
-  s_sound = std::make_unique<Sound>(true);
+  s_sound = std::make_unique<Sound>(getenv("NOSOUND") == nullptr);
 
   s_fill_sh = sg_make_shader(fill_shader_desc(sg_query_backend()));
 
