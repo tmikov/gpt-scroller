@@ -461,7 +461,7 @@ void app_cleanup() {
 void app_event(const sapp_event *ev) {
   if (simgui_handle_event(ev))
     return;
-  
+
   if (ev->type == SAPP_EVENTTYPE_KEY_DOWN) {
     if (ev->key_code == SAPP_KEYCODE_Q && (ev->modifiers & SAPP_MODIFIER_SUPER)) {
       sapp_request_quit();
@@ -500,7 +500,7 @@ static void gui_frame() {
   });
 
   /*=== UI CODE STARTS HERE ===*/
-  igSetNextWindowPos((ImVec2){10,10}, ImGuiCond_Once, (ImVec2){0,0});
+  igSetNextWindowPos((ImVec2){10, 10}, ImGuiCond_Once, (ImVec2){0, 0});
   igSetNextWindowSize((ImVec2){400, 100}, ImGuiCond_Once);
   igBegin("Hello Dear ImGui!", 0, ImGuiWindowFlags_None);
   igColorEdit3("Background", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
