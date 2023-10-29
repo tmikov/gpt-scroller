@@ -59,66 +59,28 @@ static const float INV_ASSUMED_W = 1.0f / ASSUMED_W;
 static const float ASSUMED_H = 600;
 static const float INV_ASSUMED_H = 1.0f / ASSUMED_H;
 
+/// Transform from [0..ASSUMED_W][0..ASSUMED_H] to [-1..1][-1..1].
+static const float s_transformMat[16] = {
+    2.0f / ASSUMED_W,
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f,
+    -2.0f / ASSUMED_H,
+    0.0f,
+    0.0f, // Negate to flip y-axis
+    0.0f,
+    0.0f,
+    1.0f,
+    0.0f,
+    -1.0f,
+    1.0f,
+    0.0f,
+    1.0f // Translate after scaling
+};
+
 static double mathRandom(double range) {
   return rand() * (1.0 / (RAND_MAX + 1.0)) * range;
-}
-
-/// Transform a unit rect centered around origin.
-static void transformRect(float x, float y, float w, float h, float *outMatrix) {
-  // Initialize to identity matrix
-  for (int i = 0; i < 16; ++i) {
-    outMatrix[i] = 0.0f;
-  }
-  outMatrix[0] = 1.0f;
-  outMatrix[5] = 1.0f;
-  outMatrix[10] = 1.0f;
-  outMatrix[15] = 1.0f;
-
-  // Apply scaling
-  outMatrix[0] = w; // Scale X
-  outMatrix[5] = h; // Scale Y
-
-  // Apply translation
-  outMatrix[12] = x + w / 2; // Translate X
-  outMatrix[13] = y + h / 2; // Translate Y
-}
-
-void transformRectPx(float x, float y, float width, float height, float *out_transform) {
-  // Normalize pixel coordinates to [-1, 1]
-  //  float norm_x = (x / (window_width * 0.5f)) - 1.0f;
-  //  float norm_y = 1.0f - (y / (window_height * 0.5f));
-  //  float norm_width = width / (window_width * 0.5f);
-  //  float norm_height = height / (window_height * 0.5f);
-  float norm_x = (x * INV_ASSUMED_W * 2) - 1.0f;
-  float norm_y = 1.0f - (y * INV_ASSUMED_H * 2);
-  float norm_width = width * INV_ASSUMED_W * 2;
-  float norm_height = height * INV_ASSUMED_H * 2;
-
-  // Generate transform matrix for a rectangle at normalized coordinates
-  // 4x4 matrix represented in column-major order
-  // [ sx,  0,  0, tx]
-  // [  0, sy,  0, ty]
-  // [  0,  0,  1,  0]
-  // [  0,  0,  0,  1]
-  out_transform[0] = norm_width; // sx
-  out_transform[1] = 0.0f; // 0
-  out_transform[2] = 0.0f; // 0
-  out_transform[3] = 0.0f; // 0
-
-  out_transform[4] = 0.0f; // 0
-  out_transform[5] = norm_height; // sy
-  out_transform[6] = 0.0f; // 0
-  out_transform[7] = 0.0f; // 0
-
-  out_transform[8] = 0.0f; // 0
-  out_transform[9] = 0.0f; // 0
-  out_transform[10] = 1.0f; // 1
-  out_transform[11] = 0.0f; // 0
-
-  out_transform[12] = norm_x + norm_width * 0.5f; // tx
-  out_transform[13] = norm_y - norm_height * 0.5f; // ty
-  out_transform[14] = 0.0f; // 0
-  out_transform[15] = 1.0f; // 1
 }
 
 class Image {
@@ -226,16 +188,6 @@ push_rect_with_color(std::vector<float> &vec, float x, float y, float w, float h
 }
 
 static void draw_fill_px(float x, float y, float w, float h, sg_color color) {
-  //-1, 1       1, 1
-  //
-  //       0,0
-  //
-  //-1,-1       1, -1
-  x = x * INV_ASSUMED_W * 2 - 1;
-  y = -(y * INV_ASSUMED_H * 2 - 1);
-  w = w * INV_ASSUMED_W * 2;
-  h = -(h * INV_ASSUMED_H * 2);
-
   push_rect_with_color(s_fill_verts, x, y, w, h, color);
 }
 
@@ -247,16 +199,6 @@ static void draw_blit_px(Image *image, float x, float y, float w, float h) {
     s_img_list.emplace_back(image->image_, &s_vert_pool.back());
     it->second = s_img_list.size() - 1;
   }
-
-  //-1, 1       1, 1
-  //
-  //       0,0
-  //
-  //-1,-1       1, -1
-  x = x * INV_ASSUMED_W * 2 - 1;
-  y = -(y * INV_ASSUMED_H * 2 - 1);
-  w = w * INV_ASSUMED_W * 2;
-  h = -(h * INV_ASSUMED_H * 2);
 
   push_rect(*s_img_list[it->second].second, x, y, w, h);
 }
@@ -275,30 +217,13 @@ static void render_blits() {
     blit_bind.fs.samplers[SLOT_samp] = s_sampler;
 
     blit_vs_params_t blit_vs_params;
-    //  transformRectPx(0, 0, 800, 600, blit_vs_params.transform);
-    for (int y = 0; y < 4; ++y)
-      for (int x = 0; x < 4; ++x)
-        blit_vs_params.transform[y * 4 + x] = x == y ? 1 : 0;
+    memcpy(blit_vs_params.transform, s_transformMat, sizeof(s_transformMat));
 
     sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
-
-    //  printf("\n");
 
     for (auto &img : s_img_list) {
       if (img.second->empty())
         continue;
-      //    printf("img: %d", img.first.id);
-      //    for (size_t i = 0; i < img.second->size(); i += 12) {
-      //      printf(
-      //          "  [(%.3f, %.3f), (%.3f, %.3f), (%.3f, %.3f)]\n",
-      //          img.second->at(i),
-      //          img.second->at(i + 1),
-      //          img.second->at(i + 4),
-      //          img.second->at(i + 5),
-      //          img.second->at(i + 8),
-      //          img.second->at(i + 9));
-      //    }
-      //    printf("\n");
       blit_bind.fs.images[SLOT_tex] = img.first;
       blit_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
           .data = {.ptr = img.second->data(), .size = img.second->size() * sizeof(float)},
@@ -314,10 +239,7 @@ static void render_blits() {
     sg_apply_pipeline(s_fill_pip);
 
     fill_vs_params_t fill_vs_params;
-    for (int y = 0; y < 4; ++y)
-      for (int x = 0; x < 4; ++x)
-        fill_vs_params.transform[y * 4 + x] = x == y ? 1 : 0;
-
+    memcpy(fill_vs_params.transform, s_transformMat, sizeof(s_transformMat));
     sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
 
     sg_bindings fill_bind = {};
