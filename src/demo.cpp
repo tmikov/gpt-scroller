@@ -139,6 +139,7 @@ static std::unique_ptr<Sound> s_sound;
 static int s_enemySpawnCounter = 0;
 static const int s_enemySpawnRate = 120;
 
+static float s_oldBackgroundX = 0;
 static float s_backgroundX = 0;
 static float s_backgroundSpeed = 2;
 
@@ -258,81 +259,93 @@ static void render_blits() {
 
 class Actor {
  public:
-  float x, y, width, height, vel;
+  float oldX, oldY;
+  float x, y, width, height, velX, velY;
 
-  explicit Actor(float x, float y, float width, float height, float vel)
-      : x(x), y(y), width(width), height(height), vel(vel) {}
+  explicit Actor(float x, float y, float width, float height, float velX, float velY)
+      : oldX(x), oldY(y), x(x), y(y), width(width), height(height), velX(velX), velY(velY) {}
+
+  virtual void update(bool save) {
+    if (save) {
+      oldX = x;
+      oldY = y;
+    }
+    x += velX;
+    y += velY;
+  }
+
+  float curX(float dt) const {
+    return x + (x - oldX) * dt;
+  }
+  float curY(float dt) const {
+    return y + (y - oldY) * dt;
+  }
 };
 
 class Ship : public Actor {
  public:
-  explicit Ship(float x, float y) : Actor(x, y, s_ship_image->w_, s_ship_image->h_, 5 * 2) {}
+  float speed = 5 * 2;
+  explicit Ship(float x, float y) : Actor(x, y, s_ship_image->w_, s_ship_image->h_, 0, 0) {}
 
-  void update() {
+  virtual void update(bool save) {
     if (s_keys[SAPP_KEYCODE_LEFT])
-      x -= vel;
-    if (s_keys[SAPP_KEYCODE_RIGHT])
-      x += vel;
+      velX = -speed;
+    else if (s_keys[SAPP_KEYCODE_RIGHT])
+      velX = speed;
+    else
+      velX = 0;
     if (s_keys[SAPP_KEYCODE_UP])
-      y -= vel;
-    if (s_keys[SAPP_KEYCODE_DOWN])
-      y += vel;
+      velY = -speed;
+    else if (s_keys[SAPP_KEYCODE_DOWN])
+      velY = speed;
+    else
+      velY = 0;
+    Actor::update(save);
   }
 
-  void draw() const {
-    draw_blit_px(s_ship_image.get(), x, y, width, height);
+  void draw(float dt) const {
+    draw_blit_px(s_ship_image.get(), curX(dt), curY(dt), width, height);
   }
 };
 
 class Enemy : public Actor {
  public:
-  explicit Enemy(float x, float y) : Actor(x, y, 64, 64, 2 * 2) {}
+  explicit Enemy(float x, float y) : Actor(x, y, 64, 64, -2 * 2, 0) {}
 
-  void update() {
-    x -= vel;
-  }
-
-  void draw() const {
-    draw_blit_px(s_enemy_image.get(), x, y, width, height);
+  void draw(float dt) const {
+    draw_blit_px(s_enemy_image.get(), curX(dt), curY(dt), width, height);
   }
 };
 
 class Bullet : public Actor {
  public:
-  explicit Bullet(float x, float y) : Actor(x, y, 5, 5, 8 * 2) {}
+  explicit Bullet(float x, float y) : Actor(x, y, 5, 5, 8 * 2, 0) {}
 
-  void update() {
-    x += vel;
-  }
-
-  void draw() const {
-    draw_fill_px(x, y, width, height, {1, 1, 0, 1});
+  void draw(float dt) const {
+    draw_fill_px(curX(dt), curY(dt), width, height, {1, 1, 0, 1});
   }
 };
 
-class Particle {
+class Particle : public Actor {
  public:
-  float x, y, size, speedX, speedY, life, maxLife, alpha;
+  float life, maxLife, alpha;
 
   explicit Particle(float x, float y)
-      : x(x),
-        y(y),
-        size(mathRandom(2) + 1),
-        speedX((mathRandom(4) - 2) * 2),
-        speedY((mathRandom(4) - 2) * 2),
+      : Actor(x, y, 0, 0, (mathRandom(4) - 2) * 2, ((mathRandom(4) - 2) * 2)),
         life(0),
         maxLife((mathRandom(30) + 50) / 2),
-        alpha(1) {}
+        alpha(1) {
+    width = height = mathRandom(2) + 1;
+  }
 
-  void update() {
-    x += speedX;
-    y += speedY;
+  virtual void update(bool save) {
+    Actor::update(save);
     ++life;
     alpha = 1 - (life / maxLife);
   }
 
-  void draw() const {
-    draw_fill_px(x - size / 2, y - size / 2, size, size, {1, 0.5, 0, alpha});
+  void draw(float dt) const {
+    draw_fill_px(curX(dt) - width / 2, curY(dt) - height / 2, width, height, {1, 0.5, 0, alpha});
   }
 
   bool isAlive() const {
@@ -351,9 +364,9 @@ class Explosion {
     }
   }
 
-  void update() {
+  void update(bool save) {
     for (long i = 0; i < particles.size();) {
-      particles[i].update();
+      particles[i].update(save);
       if (!particles[i].isAlive()) {
         particles.erase(particles.begin() + i);
         continue;
@@ -362,9 +375,9 @@ class Explosion {
     }
   }
 
-  void draw() const {
+  void draw(float dt) const {
     for (auto &particle : particles) {
-      particle.draw();
+      particle.draw(dt);
     }
   }
 
@@ -507,15 +520,19 @@ static void gui_frame() {
 }
 
 // Update game state
-static void update_game_state() {
+static void update_game_state(bool save) {
+  if (save)
+    s_oldBackgroundX = s_backgroundX;
   s_backgroundX -= s_backgroundSpeed;
-  if (s_backgroundX <= -s_background_image->w_)
-    s_backgroundX = 0;
+  if (s_backgroundX <= -s_background_image->w_) {
+    s_backgroundX += s_background_image->w_;
+    s_oldBackgroundX += s_background_image->w_;
+  }
 
-  s_ship->update();
+  s_ship->update(save);
 
   for (long i = 0; i < s_bullets.size();) {
-    s_bullets[i].update();
+    s_bullets[i].update(save);
     if (s_bullets[i].x > ASSUMED_W) {
       s_bullets.erase(s_bullets.begin() + i);
       continue;
@@ -531,7 +548,7 @@ static void update_game_state() {
   }
 
   for (long i = 0; i < s_enemies.size();) {
-    s_enemies[i].update();
+    s_enemies[i].update(save);
 
     if (s_enemies[i].x < -s_enemies[i].width) {
       s_enemies.erase(s_enemies.begin() + i);
@@ -565,7 +582,7 @@ static void update_game_state() {
   }
 
   for (long i = 0; i < s_explosions.size();) {
-    s_explosions[i].update();
+    s_explosions[i].update(save);
     if (!s_explosions[i].isAlive()) {
       s_explosions.erase(s_explosions.begin() + i);
       continue;
@@ -575,32 +592,35 @@ static void update_game_state() {
 }
 
 // Render game frame
-static void render_game_frame() {
-  draw_blit_px(s_background_image.get(), 0 + s_backgroundX, 0, s_background_image->w_, ASSUMED_H);
+static void render_game_frame(float dt) {
+  float bkgX = s_oldBackgroundX + (s_backgroundX - s_oldBackgroundX) * dt;
+  draw_blit_px(s_background_image.get(), bkgX, 0, s_background_image->w_, ASSUMED_H);
   draw_blit_px(
       s_background_image.get(),
-      s_backgroundX + s_background_image->w_,
+      bkgX + s_background_image->w_,
       0,
       s_background_image->w_,
       ASSUMED_H);
 
-  s_ship->draw();
+  s_ship->draw(dt);
 
   for (const auto &bullet : s_bullets) {
-    bullet.draw();
+    bullet.draw(dt);
   }
 
   for (const auto &enemy : s_enemies) {
-    enemy.draw();
+    enemy.draw(dt);
   }
 
   for (const auto &explosion : s_explosions) {
-    explosion.draw();
+    explosion.draw(dt);
   }
 }
 
+static bool s_started = false;
+static uint64_t s_start_time = 0;
+static double s_last_game_time = 0;
 static double s_game_time = 0;
-static double s_render_time = 0;
 
 void app_frame() {
   uint64_t now = stm_now();
@@ -617,14 +637,27 @@ void app_frame() {
   gui_frame();
   reset_blits();
 
-  s_render_time += sapp_frame_duration();
-  while (s_game_time < s_render_time) {
-    s_game_time += PHYS_DT;
-    if (!s_pause)
-      update_game_state();
+  if (!s_started) {
+    s_started = true;
+    s_start_time = now;
   }
 
-  render_game_frame();
+  double render_time = stm_sec(stm_diff(now, s_start_time));
+  bool save = true;
+  while (s_game_time <= render_time) {
+    if (save)
+      s_last_game_time = s_game_time;
+    s_game_time += PHYS_DT;
+    if (!s_pause)
+      update_game_state(save);
+    save = false;
+  }
+
+  // s_last_game_time ... render_time ... s_game_time
+  float renderDT = render_time >= s_last_game_time && s_game_time > s_last_game_time
+      ? (render_time - s_last_game_time) / (s_game_time - s_last_game_time)
+      : 0;
+  render_game_frame(renderDT);
 
   sdtx_canvas((float)sapp_width(), (float)sapp_height());
   sdtx_printf("FPS: %d", (int)(s_fps + 0.5));
