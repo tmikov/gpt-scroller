@@ -108,7 +108,9 @@ def need_cwrap(id):
 
 # Get the filename from the command line arguments
 if len(sys.argv) < 3:
-    print("Usage: ffigen.py <cwrap|js> <filename>")
+    print("Usage: ffigen.py <cwrap|js> <filename> [filter filenames]")
+    print("Last argument optionally provides an allow-list of files from which to export types and functions.")
+    print("Example: ffi_gen.py js foo.h foo.h,bar.h")
     sys.exit(1)
 mode = sys.argv[1]
 filename = sys.argv[2]
@@ -118,6 +120,21 @@ if filename.endswith(".xml"):
     root = read_xml_from_file(filename)
 else:
     root = read_xml_from_castxml(filename)
+
+# Set of file IDs from which to export structs and functions.
+allowed_file_ids = set()
+
+# If no filter was provided, include all files.
+if len(sys.argv) == 3:
+    for file in root.findall(".//File"):
+        allowed_file_ids.add(file.get("id"))
+else:
+    filter_names = sys.argv[3].split(",")
+    for file in root.findall(".//File"):
+        for substr in filter_names:
+            if substr in file.get("name"):
+                allowed_file_ids.add(file.get("id"))
+    
 
 # Collect all of the type declarations.
 for tag in ["Struct", "Enumeration", "FundamentalType", "PointerType", "Union",
@@ -137,6 +154,10 @@ for cv in root.findall(".//CvQualifiedType"):
 if mode == "js":
     # Generate JS declarations
     for func in root.findall(".//Function"):
+        # Skip functions that are not in the allow-list.
+        if func.get("file") not in allowed_file_ids:
+            continue
+
         name = func.get("name")
         args = []
 
@@ -182,6 +203,8 @@ if mode == "js":
     # Generate struct and union sizes.
     for type in ["Struct", "Union"]:
         for elem in root.findall(".//" + type):
+            if elem.get("file") not in allowed_file_ids:
+                continue
             name = elem.get("name")
             size = elem.get("size")
             if name and size:
@@ -190,6 +213,8 @@ if mode == "js":
 
     # Generate struct accessors
     for field in root.findall(".//Field"):
+        if field.get("file") not in allowed_file_ids:
+            continue
         field_name = field.get("name")
         field_type_id = field.get("type")
         field_type_elem = id_to_element[field_type_id]
@@ -219,11 +244,12 @@ if mode == "js":
     
     # Generate JS constants from enum values.
     for enum in root.findall(".//Enumeration"):
-        enum_name = enum.get("name")
+        if elem.get("file") not in allowed_file_ids:
+            continue
         for enum_value in enum.findall(".//EnumValue"):
             enum_value_name = enum_value.get("name")
             enum_value_value = enum_value.get("init")
-            print(f"const _{enum_name}_{enum_value_name} = {enum_value_value};")
+            print(f"const _{enum_value_name} = {enum_value_value};")
 elif mode == "cwrap":
     print("#include <stdbool.h>\n")
 
