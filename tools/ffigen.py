@@ -91,6 +91,8 @@ def to_c_name(id):
         return elem.get("name")
     if elem.tag == "PointerType":
         return to_c_name(elem.get("type")) + "*"
+    if elem.tag == "FunctionType":
+        return "void"
     if elem.tag == "Struct":
         return "struct " + elem.get("name")
     if elem.tag == "Union":
@@ -118,7 +120,8 @@ else:
     root = read_xml_from_castxml(filename)
 
 # Collect all of the type declarations.
-for tag in ["Struct", "Enumeration", "FundamentalType", "PointerType", "Union", "ArrayType"]:
+for tag in ["Struct", "Enumeration", "FundamentalType", "PointerType", "Union",
+            "ArrayType", "CvQualifiedType", "FunctionType"]:
     for elem in root.findall(".//" + tag):
         id_to_element[elem.get("id")] = elem
 
@@ -126,6 +129,10 @@ for tag in ["Struct", "Enumeration", "FundamentalType", "PointerType", "Union", 
 for typedef in root.findall(".//Typedef"):
     type_id = typedef.get("id")
     id_to_element[type_id] = id_to_element[typedef.get("type")]
+
+# Map CvQualifiedTypes to their underlying type. We don't support qualifiers yet.
+for cv in root.findall(".//CvQualifiedType"):
+    id_to_element[cv.get("id")] = id_to_element[cv.get("type")]
 
 if mode == "js":
     # Generate JS declarations
@@ -154,7 +161,7 @@ if mode == "js":
             arg_name = arg.get("name")
             arg_type = to_sh_name(arg.get("type"))
             if arg_name:
-                args.append(f"{arg_name}: {arg_type}")
+                args.append(f"_{arg_name}: {arg_type}")
             else:
                 args.append(f"_{len(args)}: {arg_type}")
 
@@ -176,8 +183,10 @@ if mode == "js":
     for type in ["Struct", "Union"]:
         for elem in root.findall(".//" + type):
             name = elem.get("name")
-            size = int(elem.get("size")) // 8
-            print(f"const _sizeof_{name} = {size};")
+            size = elem.get("size")
+            if name and size:
+                size = int(size) // 8
+                print(f"const _sizeof_{name} = {size};")
 
     # Generate struct accessors
     for field in root.findall(".//Field"):
