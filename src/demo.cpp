@@ -61,34 +61,17 @@ static const float INV_ASSUMED_W = 1.0f / ASSUMED_W;
 static const float ASSUMED_H = 600;
 static const float INV_ASSUMED_H = 1.0f / ASSUMED_H;
 
-/// Transform from [0..ASSUMED_W][0..ASSUMED_H] to [-1..1][-1..1].
-static const float s_transformMat[16] = {
-    2.0f / ASSUMED_W,
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f,
-    -2.0f / ASSUMED_H,
-    0.0f,
-    0.0f, // Negate to flip y-axis
-    0.0f,
-    0.0f,
-    1.0f,
-    0.0f,
-    -1.0f,
-    1.0f,
-    0.0f,
-    1.0f // Translate after scaling
-};
-
 static double mathRandom(double range) {
   return rand() * (1.0 / (RAND_MAX + 1.0)) * range;
 }
+
+static sg_sampler s_sampler = {};
 
 class Image {
  public:
   int w_ = 0, h_ = 0;
   sg_image image_ = {};
+  simgui_image_t simguiImage_ = {};
 
   explicit Image(const char *path) {
     int n;
@@ -103,33 +86,15 @@ class Image {
     });
 
     stbi_image_free(data);
+
+    simguiImage_ = simgui_make_image(simgui_image_desc_t{image_, s_sampler});
   }
 
   ~Image() {
+    simgui_destroy_image(simguiImage_);
     sg_destroy_image(image_);
   }
 };
-
-static sg_shader s_fill_sh = {};
-static sg_shader s_blit_sh = {};
-
-static sg_pipeline s_fill_pip = {};
-static sg_pipeline s_blit_pip = {};
-static sg_sampler s_sampler = {};
-
-/// Map from an image id to an index in s_img_list.
-static std::map<uint32_t, unsigned> s_img_index{};
-/// List of vertices in the vertex pool associated with an image.
-static std::vector<std::pair<sg_image, std::vector<float> *>> s_img_list{};
-/// Lists of triangle vertices. {x, y, u, v}
-static std::deque<std::vector<float>> s_vert_pool{};
-
-/// List of fill triangle vertices. {x, y, r, g, b, a};
-static std::vector<float> s_fill_verts{};
-
-static int s_frame_count = 0;
-static double s_fps = 0;
-static uint64_t s_last_fps_time;
 
 static std::unique_ptr<Image> s_ship_image;
 static std::unique_ptr<Image> s_enemy_image;
@@ -145,116 +110,57 @@ static float s_backgroundSpeed = 2;
 
 static bool s_keys[512];
 
+static ImVec2 s_winOrg;
+static ImVec2 s_winSize;
+static ImVec2 s_scale;
+
 static void load_images() {
   s_ship_image = std::make_unique<Image>("ship.png");
   s_enemy_image = std::make_unique<Image>("enemy.png");
   s_background_image = std::make_unique<Image>("background.png");
 }
 
-static void push_rect(std::vector<float> &vec, float x, float y, float w, float h) {
-  /*
-   * Triangle strip:
-   *    2  |  0
-   * ------+------
-   *    3  |  1
-   */
-  vec.insert(vec.end(), {x + w, y + h, 1, 1});
-  vec.insert(vec.end(), {x + w, y, 1, 0});
-  vec.insert(vec.end(), {x, y + h, 0, 1});
+#define IM_COL32(r, g, b, a)                                                                 \
+  ((ImU32)(((ImU32)(a)&0xFF) << 24) | (((ImU32)(b)&0xFF) << 16) | (((ImU32)(g)&0xFF) << 8) | \
+   (((ImU32)(r)&0xFF) << 0))
 
-  vec.insert(vec.end(), {x + w, y, 1, 0});
-  vec.insert(vec.end(), {x, y + h, 0, 1});
-  vec.insert(vec.end(), {x, y, 0, 0});
+static void push_rect_image(float x, float y, float w, float h, simgui_image_t img) {
+  x = x * s_scale.x + s_winOrg.x;
+  y = y * s_scale.y + s_winOrg.y;
+  w *= s_scale.x;
+  h *= s_scale.y;
+
+  ImDrawList_AddImage(
+      igGetWindowDrawList(),
+      simgui_imtextureid(img),
+      ImVec2{x, y},
+      ImVec2{x + w, y + h},
+      ImVec2{0, 0},
+      ImVec2{1, 1},
+      IM_COL32(255, 255, 255, 255));
 }
 
-static void
-push_rect_with_color(std::vector<float> &vec, float x, float y, float w, float h, sg_color color) {
-  /*
-   * Triangle strip:
-   *    2  |  0
-   * ------+------
-   *    3  |  1
-   */
-  vec.insert(vec.end(), {x + w, y + h});
-  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
-  vec.insert(vec.end(), {x + w, y});
-  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
-  vec.insert(vec.end(), {x, y + h});
-  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+static void push_rect_with_color(float x, float y, float w, float h, sg_color color) {
+  x = x * s_scale.x + s_winOrg.x;
+  y = y * s_scale.y + s_winOrg.y;
+  w *= s_scale.x;
+  h *= s_scale.y;
 
-  vec.insert(vec.end(), {x + w, y});
-  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
-  vec.insert(vec.end(), {x, y + h});
-  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
-  vec.insert(vec.end(), {x, y});
-  vec.insert(vec.end(), {color.r, color.g, color.b, color.a});
+  ImDrawList_AddRectFilled(
+      igGetWindowDrawList(),
+      ImVec2{x, y},
+      ImVec2{x + w, y + h},
+      IM_COL32(255 * color.r, 255 * color.g, 255 * color.b, 255 * color.a),
+      0.0f,
+      0);
 }
 
 static void draw_fill_px(float x, float y, float w, float h, sg_color color) {
-  push_rect_with_color(s_fill_verts, x, y, w, h, color);
+  push_rect_with_color(x, y, w, h, color);
 }
 
 static void draw_blit_px(Image *image, float x, float y, float w, float h) {
-  // If this is a new image, add it to the image list and create a new vertex list.
-  auto [it, inserted] = s_img_index.try_emplace(image->image_.id, 0);
-  if (inserted) {
-    s_vert_pool.emplace_back();
-    s_img_list.emplace_back(image->image_, &s_vert_pool.back());
-    it->second = s_img_list.size() - 1;
-  }
-
-  push_rect(*s_img_list[it->second].second, x, y, w, h);
-}
-
-static void reset_blits() {
-  for (auto &verts : s_vert_pool)
-    verts.clear();
-  s_fill_verts.clear();
-}
-
-static void render_blits() {
-  {
-    sg_apply_pipeline(s_blit_pip);
-
-    sg_bindings blit_bind = {};
-    blit_bind.fs.samplers[SLOT_samp] = s_sampler;
-
-    blit_vs_params_t blit_vs_params;
-    memcpy(blit_vs_params.transform, s_transformMat, sizeof(s_transformMat));
-
-    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_blit_vs_params, SG_RANGE(blit_vs_params));
-
-    for (auto &img : s_img_list) {
-      if (img.second->empty())
-        continue;
-      blit_bind.fs.images[SLOT_tex] = img.first;
-      blit_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
-          .data = {.ptr = img.second->data(), .size = img.second->size() * sizeof(float)},
-          .label = "blit vertices",
-      });
-      sg_apply_bindings(&blit_bind);
-      sg_draw(0, img.second->size() / 4, 1);
-      sg_destroy_buffer(blit_bind.vertex_buffers[0]);
-    }
-  }
-
-  if (!s_fill_verts.empty()) {
-    sg_apply_pipeline(s_fill_pip);
-
-    fill_vs_params_t fill_vs_params;
-    memcpy(fill_vs_params.transform, s_transformMat, sizeof(s_transformMat));
-    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_fill_vs_params, SG_RANGE(fill_vs_params));
-
-    sg_bindings fill_bind = {};
-    fill_bind.vertex_buffers[0] = sg_make_buffer(sg_buffer_desc{
-        .data = {.ptr = s_fill_verts.data(), .size = s_fill_verts.size() * sizeof(float)},
-        .label = "fill vertices",
-    });
-    sg_apply_bindings(&fill_bind);
-
-    sg_draw(0, s_fill_verts.size() / 6, 1);
-    sg_destroy_buffer(fill_bind.vertex_buffers[0]);
-  }
+  push_rect_image(x, y, w, h, image->simguiImage_);
 }
 
 class Actor {
@@ -394,63 +300,18 @@ static bool s_pause = false;
 
 void app_init() {
   stm_setup();
-  s_last_fps_time = stm_now();
 
   sg_desc desc = {.context = sapp_sgcontext(), .logger.func = slog_func};
   sg_setup(&desc);
   simgui_setup(simgui_desc_t{});
 
-  load_images();
   s_sound = std::make_unique<Sound>(getenv("NOSOUND") == nullptr);
-
-  s_fill_sh = sg_make_shader(fill_shader_desc(sg_query_backend()));
-
-  s_fill_pip = sg_make_pipeline(sg_pipeline_desc{
-      .shader = s_fill_sh,
-      .layout =
-          {
-              .attrs =
-                  {
-                      [ATTR_vs_fill_position].format = SG_VERTEXFORMAT_FLOAT2,
-                      [ATTR_vs_fill_color].format = SG_VERTEXFORMAT_FLOAT4,
-                  },
-          },
-      .colors[0].blend =
-          {
-              .enabled = true,
-              .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-              .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-          },
-      .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
-      .label = "fill-pipeline",
-  });
-
-  s_blit_sh = sg_make_shader(blit_shader_desc(sg_query_backend()));
-
-  s_blit_pip = sg_make_pipeline(sg_pipeline_desc{
-      .shader = s_blit_sh,
-      .layout =
-          {
-              .attrs =
-                  {
-                      [ATTR_vs_blit_pos].format = SG_VERTEXFORMAT_FLOAT2,
-                      [ATTR_vs_blit_texcoord0].format = SG_VERTEXFORMAT_FLOAT2,
-                  },
-          },
-      .colors[0].blend =
-          {
-              .enabled = true,
-              .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-              .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-          },
-      .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
-      .label = "blit-pipeline",
-  });
 
   s_sampler = sg_make_sampler(sg_sampler_desc{
       .min_filter = SG_FILTER_LINEAR,
       .mag_filter = SG_FILTER_LINEAR,
   });
+  load_images();
 
   sdtx_desc_t sdtx_desc = {.fonts = {sdtx_font_kc854()}, .logger.func = slog_func};
   sdtx_setup(&sdtx_desc);
@@ -459,25 +320,24 @@ void app_init() {
 }
 
 void app_cleanup() {
-  s_sound.reset();
-  sdtx_shutdown();
   s_ship_image.reset();
   s_enemy_image.reset();
   s_background_image.reset();
-  sg_destroy_shader(s_fill_sh);
-  sg_destroy_pipeline(s_fill_pip);
+  s_sound.reset();
+  simgui_shutdown();
+  sdtx_shutdown();
   sg_shutdown();
 }
 
 void app_event(const sapp_event *ev) {
-  if (simgui_handle_event(ev))
+  if (ev->type == SAPP_EVENTTYPE_KEY_DOWN && ev->key_code == SAPP_KEYCODE_Q &&
+      (ev->modifiers & SAPP_MODIFIER_SUPER)) {
+    sapp_request_quit();
     return;
+  }
 
+  // For now game keys are handled outside of Imgui.
   if (ev->type == SAPP_EVENTTYPE_KEY_DOWN) {
-    if (ev->key_code == SAPP_KEYCODE_Q && (ev->modifiers & SAPP_MODIFIER_SUPER)) {
-      sapp_request_quit();
-      return;
-    }
     s_keys[ev->key_code] = true;
     if (ev->key_code == SAPP_KEYCODE_SPACE) {
       s_bullets.emplace_back(s_ship->x + s_ship->width, s_ship->y + s_ship->height / 2.0 - 2.5);
@@ -488,6 +348,9 @@ void app_event(const sapp_event *ev) {
     if (ev->key_code == SAPP_KEYCODE_P)
       s_pause = !s_pause;
   }
+
+  if (simgui_handle_event(ev))
+    return;
 }
 
 static bool checkCollision(Actor &a, Actor &b) {
@@ -497,26 +360,6 @@ static bool checkCollision(Actor &a, Actor &b) {
 static void createExplosion(float x, float y) {
   s_explosions.emplace_back(x, y);
   s_sound->play(s_sound->explosion);
-}
-
-static sg_pass_action s_pass_action = {
-    .colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 0}}};
-
-static void gui_frame() {
-  simgui_new_frame({
-      .width = sapp_width(),
-      .height = sapp_height(),
-      .delta_time = sapp_frame_duration(),
-      .dpi_scale = sapp_dpi_scale(),
-  });
-
-  /*=== UI CODE STARTS HERE ===*/
-  igSetNextWindowPos((ImVec2){10, 10}, ImGuiCond_Once, (ImVec2){0, 0});
-  igSetNextWindowSize((ImVec2){400, 100}, ImGuiCond_Once);
-  igBegin("Hello Dear ImGui!", 0, ImGuiWindowFlags_None);
-  igColorEdit3("Background", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
-  igEnd();
-  /*=== UI CODE ENDS HERE ===*/
 }
 
 // Update game state
@@ -621,27 +464,11 @@ static bool s_started = false;
 static uint64_t s_start_time = 0;
 static double s_last_game_time = 0;
 static double s_game_time = 0;
+static int s_frame_count = 0;
+static uint64_t s_last_fps_time = 0;
+static uint64_t s_fps = 0;
 
-void app_frame() {
-  uint64_t now = stm_now();
-  ++s_frame_count;
-
-  // Update FPS every second
-  uint64_t diff = stm_diff(now, s_last_fps_time);
-  if (diff > 1000000000) {
-    s_fps = s_frame_count / stm_sec(diff);
-    s_frame_count = 0;
-    s_last_fps_time = now;
-  }
-
-  gui_frame();
-  reset_blits();
-
-  if (!s_started) {
-    s_started = true;
-    s_start_time = now;
-  }
-
+static void gameWindow(uint64_t now) {
   double render_time = stm_sec(stm_diff(now, s_start_time));
   bool save = true;
   while (s_game_time <= render_time) {
@@ -657,16 +484,149 @@ void app_frame() {
   float renderDT = render_time >= s_last_game_time && s_game_time > s_last_game_time
       ? (render_time - s_last_game_time) / (s_game_time - s_last_game_time)
       : 0;
-  render_game_frame(renderDT);
 
-  sdtx_canvas((float)sapp_width(), (float)sapp_height());
-  sdtx_printf("FPS: %d", (int)(s_fps + 0.5));
+  float app_w = sapp_widthf();
+  float app_h = sapp_heightf();
+  igSetNextWindowPos((ImVec2){app_w * 0.10f, app_h * 0.10f}, ImGuiCond_Once, (ImVec2){0, 0});
+  igSetNextWindowSize((ImVec2){app_w * 0.8f, app_h * 0.8f}, ImGuiCond_Once);
+  if (igBegin("Game", NULL, 0)) {
+    // Get the top-left corner and size of the window
+    igGetCursorScreenPos(&s_winOrg);
+    igGetContentRegionAvail(&s_winSize);
+
+    s_scale.x = s_winSize.x * INV_ASSUMED_W;
+    s_scale.y = s_winSize.y * INV_ASSUMED_H;
+
+    render_game_frame(renderDT);
+  }
+  igEnd();
+}
+
+static sg_pass_action s_pass_action = {
+    .colors[0] = {.load_action = SG_LOADACTION_CLEAR, .clear_value = {0, 0, 0, 0}}};
+
+static void chooseColorWindow() {
+  igSetNextWindowPos((ImVec2){10, 10}, ImGuiCond_Once, (ImVec2){0, 0});
+  igSetNextWindowSize((ImVec2){400, 100}, ImGuiCond_Once);
+  igBegin("Hello Dear ImGui!", 0, ImGuiWindowFlags_None);
+  igColorEdit3("Background", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
+  igEnd();
+}
+
+static void bouncingBallWindow() {
+  // Global variables for ball position and velocity
+  static float ball_x = 0.0f, ball_y = 0.0f;
+  static float velocity_x = 2, velocity_y = 1.5;
+
+  float app_w = sapp_widthf();
+  float app_h = sapp_heightf();
+  igSetNextWindowPos((ImVec2){app_w * 0.7f, app_h * 0.05f}, ImGuiCond_Once, (ImVec2){0, 0});
+  igSetNextWindowSize((ImVec2){app_w * 0.3f, app_h * 0.3f}, ImGuiCond_Once);
+  if (igBegin("Bouncing Ball", NULL, 0)) {
+    // Get the window's draw list
+    ImDrawList *draw_list = igGetWindowDrawList();
+
+    // Get the top-left corner and size of the window
+    ImVec2 p;
+    igGetCursorScreenPos(&p);
+    ImVec2 win_size;
+    igGetContentRegionAvail(&win_size);
+
+    // Draw white borders (4 rectangles)
+    float border_thickness = 4.0f;
+    ImDrawList_AddRectFilled(
+        draw_list,
+        p,
+        (ImVec2){p.x + win_size.x, p.y + border_thickness},
+        IM_COL32(255, 255, 255, 255),
+        0.0f,
+        0); // Top
+    ImDrawList_AddRectFilled(
+        draw_list,
+        p,
+        (ImVec2){p.x + border_thickness, p.y + win_size.y},
+        IM_COL32(255, 255, 255, 255),
+        0.0f,
+        0); // Left
+    ImDrawList_AddRectFilled(
+        draw_list,
+        (ImVec2){p.x, p.y + win_size.y - border_thickness},
+        (ImVec2){p.x + win_size.x, p.y + win_size.y},
+        IM_COL32(255, 255, 255, 255),
+        0.0f,
+        0); // Bottom
+    ImDrawList_AddRectFilled(
+        draw_list,
+        (ImVec2){p.x + win_size.x - border_thickness, p.y},
+        (ImVec2){p.x + win_size.x, p.y + win_size.y},
+        IM_COL32(255, 255, 255, 255),
+        0.0f,
+        0); // Right
+
+    // Update ball position
+    ball_x += velocity_x;
+    ball_y += velocity_y;
+
+    // Ball radius
+    float radius = 10.0f;
+
+    // Bounce logic for X
+    if (ball_x - radius <= 0 || ball_x + radius >= win_size.x) {
+      velocity_x *= -1;
+      ball_x = (ball_x - radius <= 0) ? radius : win_size.x - radius;
+    }
+
+    // Bounce logic for Y
+    if (ball_y - radius <= 0 || ball_y + radius >= win_size.y) {
+      velocity_y *= -1;
+      ball_y = (ball_y - radius <= 0) ? radius : win_size.y - radius;
+    }
+
+    // Draw the ball
+    ImDrawList_AddCircleFilled(
+        draw_list, (ImVec2){p.x + ball_x, p.y + ball_y}, radius, IM_COL32(0, 255, 0, 255), 12);
+  }
+  igEnd();
+}
+
+void app_frame() {
+  uint64_t now = stm_now();
+
+  if (!s_started) {
+    s_started = true;
+    s_start_time = now;
+    s_last_fps_time = now;
+    s_frame_count = 0;
+  } else {
+    ++s_frame_count;
+    // Update FPS every second
+    uint64_t diff = stm_diff(now, s_last_fps_time);
+    if (diff > 1000000000) {
+      s_fps = s_frame_count / stm_sec(diff);
+      s_frame_count = 0;
+      s_last_fps_time = now;
+    }
+  }
+
+  simgui_new_frame({
+      .width = sapp_width(),
+      .height = sapp_height(),
+      .delta_time = sapp_frame_duration(),
+      .dpi_scale = sapp_dpi_scale(),
+  });
+  chooseColorWindow();
+  gameWindow(now);
+  bouncingBallWindow();
+
+  if (s_fps) {
+    sdtx_canvas((float)sapp_width(), (float)sapp_height());
+    sdtx_printf("FPS: %d", (int)(s_fps + 0.5));
+  }
 
   // Begin and end pass
   sg_begin_default_pass(&s_pass_action, sapp_width(), sapp_height());
-  render_blits();
-  sdtx_draw();
   simgui_render();
+  sdtx_draw();
   sg_end_pass();
 
   // Commit the frame
