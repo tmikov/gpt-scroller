@@ -589,6 +589,99 @@ static void bouncingBallWindow() {
   igEnd();
 }
 
+// Initialize 2D array to store numbers
+#define NUM_ROWS 40
+#define NUM_COLS 8
+static float s_numbers[NUM_ROWS][NUM_COLS];
+
+static const char *s_capitals[] = {
+    "Tokyo",        "Delhi",        "Shanghai",   "Sao Paulo",
+    "Mumbai",       "Mexico City",  "Beijing",    "Osaka",
+    "Cairo",        "New York",     "Dhaka",      "Karachi",
+    "Buenos Aires", "Kolkata",      "Istanbul",   "Rio de Janeiro",
+    "Manila",       "Tianjin",      "Kinshasa",   "Lahore",
+    "Jakarta",      "Seoul",        "Wenzhou",    "Shenzhen",
+    "Chengdu",      "Lima",         "Bangkok",    "London",
+    "Hong Kong",    "Chongqing",    "Hangzhou",   "Ho Chi Minh City",
+    "Ahmedabad",    "Kuala Lumpur", "Pune",       "Riyadh",
+    "Miami",        "Santiago",     "Alexandria", "Saint Petersburg"};
+static constexpr unsigned NUM_CAPITALS = sizeof(s_capitals) / sizeof(s_capitals[0]);
+
+// Initialize colors
+static ImU32 s_colors[] = {
+    IM_COL32(255, 0, 0, 255),
+    IM_COL32(0, 255, 0, 255),
+    IM_COL32(255, 255, 255, 255)};
+
+static void randomizeNumbers() {
+  for (int i = 0; i < NUM_ROWS; ++i) {
+    for (int j = 0; j < NUM_COLS; ++j) {
+      s_numbers[i][j] += ((float)rand() / RAND_MAX - 0.5) * 2; // Random step
+      if (s_numbers[i][j] < 0)
+        s_numbers[i][j] = 0;
+      if (s_numbers[i][j] > 100)
+        s_numbers[i][j] = 100;
+    }
+  }
+}
+
+static ImU32 getColor(float num) {
+  if (num < 33.0f)
+    return s_colors[0];
+  if (num < 66.0f)
+    return s_colors[1];
+  return s_colors[2];
+}
+
+void renderSpreadsheet(const char *name, double curTime) {
+  static bool inited = false;
+  static double lastTime = 0;
+
+  if (!inited) {
+    inited = true;
+    // Initialize numbers to random values between 0 and 100
+    for (int i = 0; i < NUM_ROWS; ++i) {
+      for (int j = 0; j < NUM_COLS; ++j) {
+        s_numbers[i][j] = (float)rand() / RAND_MAX * 100.0f;
+      }
+    }
+  }
+
+  if (curTime - lastTime >= 1) {
+    lastTime = curTime;
+    randomizeNumbers();
+  }
+
+  if (igBegin(name, NULL, 0)) {
+    if (igBeginTable("spreadsheet", NUM_COLS + 1, ImGuiTableFlags_Resizable, (ImVec2){0, 0}, 0)) {
+      igTableSetupColumn("Labels", ImGuiTableColumnFlags_WidthFixed, 0, 0);
+      for (int i = 0; i < NUM_COLS; ++i) {
+        igTableSetupColumn("Column", ImGuiTableColumnFlags_WidthStretch, 0, 0);
+      }
+      igTableHeadersRow();
+
+      for (int row = 0; row < NUM_ROWS; ++row) {
+        igTableNextRow(ImGuiTableRowFlags_None, 0);
+
+        igTableSetColumnIndex(0);
+        igText(s_capitals[row % NUM_CAPITALS]);
+
+        for (int col = 0; col < NUM_COLS; ++col) {
+          igTableSetColumnIndex(col + 1);
+
+          ImU32 color = getColor(s_numbers[row][col]);
+          igPushStyleColor_U32(ImGuiCol_Text, color);
+          //          igTableSetBgColor(ImGuiTableBgTarget_CellBg, color, col);
+          igText("%.2f", s_numbers[row][col]);
+          igPopStyleColor(1);
+        }
+      }
+      igEndTable();
+    }
+    igEnd();
+  }
+}
+
 void app_frame() {
   uint64_t now = stm_now();
 
@@ -617,6 +710,7 @@ void app_frame() {
   chooseColorWindow();
   gameWindow(now);
   bouncingBallWindow();
+  renderSpreadsheet("Cities", stm_sec(stm_diff(now, s_start_time)));
 
   if (s_fps) {
     sdtx_canvas((float)sapp_width(), (float)sapp_height());
