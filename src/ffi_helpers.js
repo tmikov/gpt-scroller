@@ -33,5 +33,11 @@ const _sh_ptr_add = $SHBuiltin.extern_c({include: "ffi_helpers.h"}, function _sh
 const _malloc = $SHBuiltin.extern_c({include: "stdlib.h"}, function malloc(size: c_size_t): c_ptr {
     throw 0;
 });
+const _calloc = $SHBuiltin.extern_c({include: "stdlib.h"}, function calloc(count: c_size_t, size: c_size_t): c_ptr {
+    throw 0;
+});
 const _free = $SHBuiltin.extern_c({include: "stdlib.h"}, function free(p: c_ptr): void {
 });
+
+const c_null = $SHBuiltin.c_null();
+

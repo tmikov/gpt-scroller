@@ -28,18 +28,19 @@ include_directories(${HERMES_SRC}/Public)
 include_directories(${HERMES_SRC}/API)
 include_directories(${HERMES_SRC}/API/jsi)
 
-add_library(scroller scroller.cpp)
+add_library(scroller scroller.cpp js_externs_cwrap.c)
 target_link_libraries(scroller sokol stb)
 
 add_custom_command(OUTPUT jsdemo
-        COMMAND ${SHERMES} $<$<CONFIG:Debug>:-g3> -typed asciiz.js sapp.js demo.js
+        COMMAND ${SHERMES} $<$<CONFIG:Debug>:-g3> -typed ffi_helpers.js asciiz.js sapp.js js_externs.js demo.js
         -L${CMAKE_CURRENT_BINARY_DIR}
         -L${CMAKE_CURRENT_BINARY_DIR}/sokol
         -L${CMAKE_CURRENT_BINARY_DIR}/stb
-        -lscroller -lsokol -lstb
+        -lscroller -lsokol -lcimgui -lstb
+        -Wc,-I.
         -Wc,-framework,Cocoa,-framework,QuartzCore,-framework,Metal,-framework,MetalKit -lc++
         -o ${CMAKE_CURRENT_BINARY_DIR}/jsdemo
-        DEPENDS scroller asciiz.js sapp.js demo.js
+        DEPENDS scroller ffi_helpers.js asciiz.js sapp.js js_externs.js demo.js
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_custom_target(build-jsdemo DEPENDS jsdemo)

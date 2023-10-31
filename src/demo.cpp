@@ -507,9 +507,11 @@ static sg_pass_action s_pass_action = {
 
 static void chooseColorWindow() {
   igSetNextWindowPos((ImVec2){10, 10}, ImGuiCond_Once, (ImVec2){0, 0});
-  igSetNextWindowSize((ImVec2){400, 100}, ImGuiCond_Once);
-  igBegin("Hello Dear ImGui!", 0, ImGuiWindowFlags_None);
-  igColorEdit3("Background", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
+  igSetNextWindowSize((ImVec2){400, 200}, ImGuiCond_Once);
+  igBegin("Settings", 0, ImGuiWindowFlags_None);
+  igColorEdit3("Bg", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
+  static char buffer[1024] = "This is some text for editing.\nAnd more.";
+  igInputTextMultiline("Text", buffer, sizeof(buffer), ImVec2{0,0}, 0, NULL, NULL);
   igEnd();
 }
 

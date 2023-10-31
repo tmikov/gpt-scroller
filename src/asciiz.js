@@ -1,18 +1,19 @@
-const c_null = $SHBuiltin.c_null();
-
-// stdlib.h
-const _malloc = $SHBuiltin.extern_c({include: "stdlib.h"}, function malloc(size: c_size_t): c_ptr {
-    throw 0;
-});
-const _free = $SHBuiltin.extern_c({include: "stdlib.h"}, function free(p: c_ptr): void {
-});
-
 // Pointer access builtins.
 const _ptr_write_char = $SHBuiltin.extern_c({declared: true}, function _sh_ptr_write_char(ptr: c_ptr, offset: c_int, v: c_char): void {
 });
 const _ptr_read_uchar = $SHBuiltin.extern_c({declared: true}, function _sh_ptr_read_uchar(ptr: c_ptr, offset: c_int): c_uchar {
     throw 0;
 });
+
+/// Allocate native memory using calloc() or throw an exception.
+function calloc(size: number): c_ptr {
+    "inline";
+    "use unsafe";
+
+    let res = _calloc(1, size);
+    if (res === 0) throw Error("OOM");
+    return res;
+}
 
 /// Allocate native memory using malloc() or throw an exception.
 function malloc(size: number): c_ptr {
@@ -24,6 +25,17 @@ function malloc(size: number): c_ptr {
     return res;
 }
 
+function copyToAsciiz(s: any, buf: c_ptr, size: number): void {
+    if (s.length >= size) throw Error("String too long");
+    let i = 0;
+    for (let e = s.length; i < e; ++i) {
+        let code: number = s.charCodeAt(i);
+        if (code > 127) throw Error("String is not ASCII");
+        _ptr_write_char(buf, i, code);
+    }
+    _ptr_write_char(buf, i, 0);
+}
+
 /// Convert a JS string to ASCIIZ.
 function stringToAsciiz(s: any): c_ptr {
     "use unsafe";
@@ -31,13 +43,7 @@ function stringToAsciiz(s: any): c_ptr {
     if (typeof s !== "string") s = String(s);
     let buf = malloc(s.length + 1);
     try {
-        let i = 0;
-        for (let e = s.length; i < e; ++i) {
-            let code: number = s.charCodeAt(i);
-            if (code > 127) throw Error("String is not ASCII");
-            _ptr_write_char(buf, i, code);
-        }
-        _ptr_write_char(buf, i, 0);
+        copyToAsciiz(s, buf, s.length + 1);
         return buf;
     } catch (e) {
         _free(buf);
@@ -45,3 +51,29 @@ function stringToAsciiz(s: any): c_ptr {
     }
 }
 
+/// Convert a JS string to ASCIIZ.
+function tmpAsciiz(s: any): c_ptr {
+    "use unsafe";
+
+    if (typeof s !== "string") s = String(s);
+    let buf = allocTmp(s.length + 1);
+    copyToAsciiz(s, buf, s.length + 1);
+    return buf;
+}
+
+
+let _allocas: c_ptr[] = [];
+
+function allocTmp(size: number): c_ptr {
+    let res = calloc(size);
+    _allocas.push(res);
+    return res;
+}
+
+function flushAllocTmp(): void {
+    for (let i = 0; i < _allocas.length; ++i) {
+        _free(_allocas[i]);
+    }
+    let empty: c_ptr[] = [];
+    _allocas = empty;
+}
