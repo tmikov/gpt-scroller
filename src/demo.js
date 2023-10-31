@@ -21,6 +21,7 @@ class Image {
     handle: number;
     width: number;
     height: number;
+    simguiImage: c_ptr;
 
     constructor(path: string) {
         let path_z = stringToAsciiz(path);
@@ -31,112 +32,226 @@ class Image {
         }
         this.width = _image_width(this.handle);
         this.height = _image_height(this.handle);
+        this.simguiImage = _image_simgui_image(this.handle);
     }
 }
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
+const PHYS_FPS = 60;
+const PHYS_DT = 1.0 / PHYS_FPS;
+const ASSUMED_W = 800;
+const INV_ASSUMED_W = 1.0 / ASSUMED_W;
+const ASSUMED_H = 600;
+const INV_ASSUMED_H = 1.0 / ASSUMED_H;
 
 const keys = new Uint8Array(_SAPP_MAX_KEYCODES);
+let s_pause = false;
 
 let shipImage: Image;
 let enemyImage: Image;
 let backgroundImage: Image;
 
+let s_winOrg_x = 0;
+let s_winOrg_y = 0;
+let s_winSize_x = 0;
+let s_winSize_y = 0;
+let s_scale_x = 0;
+let s_scale_y = 0;
+
+function mathRandom(range: number): number {
+    "inline";
+    return Math.random() * range;
+}
+
+function IM_COL32(r, g, b, a) {
+    "inline";
+    return ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
+}
+
+const s_vecs = calloc(_sizeof_ImVec2 * 4);
+
+function pushRectImage(x: number, y: number, w: number, h: number, img: c_ptr): void {
+    x = x * s_scale_x + s_winOrg_x;
+    y = y * s_scale_y + s_winOrg_y;
+    w *= s_scale_x;
+    h *= s_scale_y;
+
+    // min
+    set_ImVec2_x(s_vecs, x);
+    set_ImVec2_y(s_vecs, y);
+    // max
+    set_ImVec2_x(_sh_ptr_add(s_vecs, _sizeof_ImVec2), x + w);
+    set_ImVec2_y(_sh_ptr_add(s_vecs, _sizeof_ImVec2), y + h);
+    // uv_min
+    set_ImVec2_x(_sh_ptr_add(s_vecs, 2 * _sizeof_ImVec2), 0);
+    set_ImVec2_y(_sh_ptr_add(s_vecs, 2 * _sizeof_ImVec2), 0);
+    // uv_max
+    set_ImVec2_x(_sh_ptr_add(s_vecs, 3 * _sizeof_ImVec2), 1);
+    set_ImVec2_y(_sh_ptr_add(s_vecs, 3 * _sizeof_ImVec2), 1);
+
+    _ImDrawList_AddImage(
+        _igGetWindowDrawList(),
+        _simgui_imtextureid(img),
+        s_vecs,
+        _sh_ptr_add(s_vecs, _sizeof_ImVec2),
+        _sh_ptr_add(s_vecs, _sizeof_ImVec2 * 2),
+        _sh_ptr_add(s_vecs, _sizeof_ImVec2 * 3),
+        IM_COL32(255, 255, 255, 255)
+    );
+}
+
+function pushRectWithColor(x: number, y: number, w: number, h: number, r: number, g: number, b: number, a: number): void {
+    x = x * s_scale_x + s_winOrg_x;
+    y = y * s_scale_y + s_winOrg_y;
+    w *= s_scale_x;
+    h *= s_scale_y;
+
+    // min
+    set_ImVec2_x(s_vecs, x);
+    set_ImVec2_y(s_vecs, y);
+    // max
+    set_ImVec2_x(_sh_ptr_add(s_vecs, _sizeof_ImVec2), x + w);
+    set_ImVec2_y(_sh_ptr_add(s_vecs, _sizeof_ImVec2), y + h);
+
+    _ImDrawList_AddRectFilled(
+        _igGetWindowDrawList(),
+        s_vecs,
+        _sh_ptr_add(s_vecs, _sizeof_ImVec2),
+        IM_COL32(255 * r, 255 * g, 255 * b, 255 * a),
+        0.0,
+        0
+    );
+}
+
+function drawFillPx(x: number, y: number, w: number, h: number, r: number, g: number, b: number, a: number): void {
+    "inline";
+    pushRectWithColor(x, y, w, h, r, g, b, a);
+}
+
+function drawBlitPx(image: Image, x: number, y: number, w: number, h: number): void {
+    "inline";
+    pushRectImage(x, y, w, h, image.simguiImage);
+}
+
 class Actor {
+    oldX: number;
+    oldY: number;
     x: number;
     y: number;
     width: number;
     height: number;
-    vel: number;
+    velX: number;
+    velY: number;
 
-    constructor(x: number, y: number, width: number, height: number, vel: number) {
+    constructor(x: number, y: number, width: number, height: number, velX: number, velY: number) {
+        this.oldX = x;
+        this.oldY = y;
         this.x = x;
         this.y = y;
         this.width = width;
         this.height = height;
-        this.vel = vel;
+        this.velX = velX;
+        this.velY = velY;
+    }
+
+    _superUpdate(save: boolean): void {
+        if (save) {
+            this.oldX = this.x;
+            this.oldY = this.y;
+        }
+        this.x += this.velX;
+        this.y += this.velY;
+    }
+
+    update(save: boolean): void {
+        this._superUpdate(save);
+    }
+
+    curX(dt: number): number {
+        return this.x + (this.x - this.oldX) * dt;
+    }
+
+    curY(dt: number): number {
+        return this.y + (this.y - this.oldY) * dt;
     }
 }
 
 class Ship extends Actor {
+    speed: number;
+
     constructor(x: number, y: number) {
-        super(x, y, shipImage.width, shipImage.height, 5);
+        super(x, y, shipImage.width, shipImage.height, 0, 0);
+        this.speed = 5 * 2;
     }
 
-    update(): void {
-        if (keys[_SAPP_KEYCODE_LEFT]) this.x -= this.vel;
-        if (keys[_SAPP_KEYCODE_RIGHT]) this.x += this.vel;
-        if (keys[_SAPP_KEYCODE_UP]) this.y -= this.vel;
-        if (keys[_SAPP_KEYCODE_DOWN]) this.y += this.vel;
+    update(save: boolean): void {
+        if (keys[_SAPP_KEYCODE_LEFT]) {
+            this.velX = -this.speed;
+        } else if (keys[_SAPP_KEYCODE_RIGHT]) {
+            this.velX = this.speed;
+        } else {
+            this.velX = 0;
+        }
+
+        if (keys[_SAPP_KEYCODE_UP]) {
+            this.velY = -this.speed;
+        } else if (keys[_SAPP_KEYCODE_DOWN]) {
+            this.velY = this.speed;
+        } else {
+            this.velY = 0;
+        }
+
+        this._superUpdate(save);
     }
 
-    draw(): void {
-        // _draw_blit_px(shipImage.handle, this.x, this.y, this.width, this.height);
-    }
-}
-
-class Bullet extends Actor {
-    constructor(x: number, y: number) {
-        super(x, y, 5, 5, 8);
-    }
-
-    update(): void {
-        this.x += this.vel;
-    }
-
-    draw(): void {
-        // _draw_fill_px(this.x, this.y, this.width, this.height, 1, 1, 0, 1);
+    draw(dt: number): void {
+        drawBlitPx(shipImage, this.curX(dt), this.curY(dt), this.width, this.height);
     }
 }
 
 class Enemy extends Actor {
     constructor(x: number, y: number) {
-        super(x, y, 64, 64, 2);
+        super(x, y, 64, 64, -2 * 2, 0);
     }
 
-    update(): void {
-        this.x -= this.vel;
-    }
-
-    draw(): void {
-        // _draw_blit_px(enemyImage.handle, this.x, this.y, this.width, this.height);
+    draw(dt: number): void {
+        drawBlitPx(enemyImage, this.curX(dt), this.curY(dt), this.width, this.height);
     }
 }
 
-class Particle {
-    x: number;
-    y: number;
-    size: number;
-    speedX: number;
-    speedY: number;
+class Bullet extends Actor {
+    constructor(x: number, y: number) {
+        super(x, y, 5, 5, 8 * 2, 0);
+    }
+
+    draw(dt: number): void {
+        drawFillPx(this.curX(dt), this.curY(dt), this.width, this.height, 1, 1, 0, 1);
+    }
+}
+
+class Particle extends Actor {
     life: number;
     maxLife: number;
     alpha: number;
 
     constructor(x: number, y: number) {
-        this.x = x;
-        this.y = y;
-        this.size = Math.random() * 2 + 1;
-        this.speedX = Math.random() * 4 - 2;
-        this.speedY = Math.random() * 4 - 2;
+        super(x, y, 0, 0, (mathRandom(4) - 2) * 2, (mathRandom(4) - 2) * 2);
         this.life = 0;
-        this.maxLife = Math.random() * 30 + 50;
+        this.maxLife = (mathRandom(30) + 50) / 2;
         this.alpha = 1;
+        this.width = this.height = mathRandom(2) + 1;
     }
 
-    update() {
-        this.x += this.speedX;
-        this.y += this.speedY;
+    update(save: boolean): void {
+        this._superUpdate(save);
         this.life++;
         this.alpha = 1 - (this.life / this.maxLife);
     }
 
-    draw() {
-        // _draw_fill_px(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size, 1, 0.5, 0, this.alpha);
+    draw(dt: number): void {
+        drawFillPx(this.curX(dt) - this.width / 2, this.curY(dt) - this.height / 2, this.width, this.height, 1, 0.5, 0, this.alpha);
     }
 
-    isAlive() {
+    isAlive(): boolean {
         return this.life < this.maxLife;
     }
 }
@@ -144,31 +259,43 @@ class Particle {
 class Explosion {
     x: number;
     y: number;
-    particles: any;
+    particles: Particle[];
+    alive: boolean;
 
     constructor(x: number, y: number) {
         this.x = x;
         this.y = y;
-        this.particles = Array();
-
-        for (let i = 0; i < 50; i++) {
+        let tmp: Particle[] = [];
+        this.particles = tmp;
+        for (let i = 0; i < 50; ++i) {
             this.particles.push(new Particle(x, y));
+        }
+        this.alive = true;
+    }
+
+    update(save: boolean): void {
+        let alive = false;
+        for (let i = 0; i < this.particles.length; ++i) {
+            if (this.particles[i].isAlive()) {
+                this.particles[i].update(save);
+                // This crashes the compiler:
+                //alive |= this.particles[i].isAlive();
+                alive = alive || this.particles[i].isAlive();
+            }
+        }
+        this.alive = alive;
+    }
+
+    draw(dt: number): void {
+        for (let i = 0, e = this.particles.length; i < e; ++i) {
+            let particle: Particle = this.particles[i];
+            if (particle.isAlive())
+                particle.draw(dt);
         }
     }
 
-    update() {
-        this.particles = this.particles.filter(particle => {
-            particle.update();
-            return particle.isAlive();
-        });
-    }
-
-    draw() {
-        this.particles.forEach(particle => particle.draw());
-    }
-
-    isAlive() {
-        return this.particles.length > 0;
+    isAlive(): boolean {
+        return this.alive;
     }
 }
 
@@ -183,21 +310,164 @@ const enemySpawnRate = 120;
 let backgroundX = 0;
 const backgroundSpeed = 1;
 
-function checkCollision(rect1: Actor, rect2: Actor): boolean {
-    return (rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x && rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y);
+function checkCollision(a: Actor, b: Actor): boolean {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-function createExplosion(x: number, y: number) {
-    const explosion = new Explosion(x, y);
-    explosions.push(explosion);
-    // playSound(explosionSound);
+function createExplosion(x: number, y: number): void {
+    explosions.push(new Explosion(x, y));
 }
 
 globalThis.on_init = function on_init(): void {
     shipImage = new Image("../ship.png");
     enemyImage = new Image("../enemy.png");
     backgroundImage = new Image("../background.png");
-    ship = new Ship(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ship = new Ship(ASSUMED_W / 2, ASSUMED_H / 2);
+}
+
+let s_oldBackgroundX: number = 0;
+let s_backgroundX: number = 0;
+let s_backgroundSpeed: number = 2;
+let s_enemySpawnCounter: number = 0;
+let s_enemySpawnRate: number = 120;
+
+function update_game_state(save: boolean): void {
+    if (save) {
+        s_oldBackgroundX = s_backgroundX;
+    }
+    s_backgroundX -= s_backgroundSpeed;
+    if (s_backgroundX <= -backgroundImage.width) {
+        s_backgroundX += backgroundImage.width;
+        s_oldBackgroundX += backgroundImage.width;
+    }
+
+    ship.update(save);
+
+    for (let i = 0; i < bullets.length;) {
+        bullets[i].update(save);
+        if (bullets[i].x > ASSUMED_W) {
+            bullets.splice(i, 1);
+            continue;
+        }
+        i++;
+    }
+
+    s_enemySpawnCounter++;
+    if (s_enemySpawnCounter >= s_enemySpawnRate) {
+        const y = mathRandom(ASSUMED_H - 64);
+        enemies.push(new Enemy(ASSUMED_W, y));
+        s_enemySpawnCounter = 0;
+    }
+
+    for (let i = 0; i < enemies.length;) {
+        enemies[i].update(save);
+
+        if (enemies[i].x < -enemies[i].width) {
+            enemies.splice(i, 1);
+            continue;
+        }
+
+        let destroy = false;
+        if (checkCollision(ship, enemies[i])) {
+            createExplosion(enemies[i].x + enemies[i].width / 2, enemies[i].y + enemies[i].height / 2);
+            destroy = true;
+        } else {
+            for (let j = 0; j < bullets.length;) {
+                if (checkCollision(bullets[j], enemies[i])) {
+                    if (!destroy) {
+                        createExplosion(enemies[i].x + enemies[i].width / 2, enemies[i].y + enemies[i].height / 2);
+                    }
+                    bullets.splice(j, 1);
+                    destroy = true;
+                    continue;
+                }
+                j++;
+            }
+        }
+        if (destroy) {
+            enemies.splice(i, 1);
+            continue;
+        }
+        i++;
+    }
+
+    for (let i = 0; i < explosions.length;) {
+        explosions[i].update(save);
+        if (!explosions[i].isAlive()) {
+            explosions.splice(i, 1);
+            continue;
+        }
+        i++;
+    }
+}
+
+function render_game_frame(dt: number): void {
+    const bkgX = s_oldBackgroundX + (s_backgroundX - s_oldBackgroundX) * dt;
+    drawBlitPx(backgroundImage, bkgX, 0, backgroundImage.width, ASSUMED_H);
+    drawBlitPx(
+        backgroundImage,
+        bkgX + backgroundImage.width,
+        0,
+        backgroundImage.width,
+        ASSUMED_H
+    );
+
+    ship.draw(dt);
+
+    for (const bullet of bullets) {
+        bullet.draw(dt);
+    }
+
+    for (const enemy of enemies) {
+        enemy.draw(dt);
+    }
+
+    for (const explosion of explosions) {
+        explosion.draw(dt);
+    }
+}
+
+let s_last_game_time = 0.0;
+let s_game_time = 0.0;
+
+function gameWindow(app_w: number, app_h: number, render_time: number): void {
+    let save = true;
+    while (s_game_time <= render_time) {
+        if (save)
+            s_last_game_time = s_game_time;
+        s_game_time += PHYS_DT;
+        if (!s_pause)
+            update_game_state(save);
+        save = false;
+    }
+
+    const renderDT = render_time >= s_last_game_time && s_game_time > s_last_game_time
+        ? (render_time - s_last_game_time) / (s_game_time - s_last_game_time)
+        : 0;
+
+    let tmpVec = allocTmp(_sizeof_ImVec2 * 2);
+    set_ImVec2_x(tmpVec, app_w * 0.55);
+    set_ImVec2_y(tmpVec, app_h * 0.6);
+    _igSetNextWindowPos(tmpVec, _ImGuiCond_Once, _sh_ptr_add(tmpVec, _sizeof_ImVec2));
+    set_ImVec2_x(tmpVec, app_w * 0.35);
+    set_ImVec2_y(tmpVec, app_h * 0.35);
+    _igSetNextWindowSize(tmpVec, _ImGuiCond_Once);
+
+    if (_igBegin(tmpAsciiz("Game"), c_null, 0)) {
+        // Get the top-left corner and size of the window
+        _igGetCursorScreenPos(tmpVec);
+        s_winOrg_x = get_ImVec2_x(tmpVec);
+        s_winOrg_y = get_ImVec2_y(tmpVec);
+        _igGetContentRegionAvail(tmpVec);
+        s_winSize_x = get_ImVec2_x(tmpVec);
+        s_winSize_y = get_ImVec2_y(tmpVec);
+
+        s_scale_x = s_winSize_x * INV_ASSUMED_W;
+        s_scale_y = s_winSize_y * INV_ASSUMED_H;
+
+        render_game_frame(renderDT);
+    }
+    _igEnd();
 }
 
 const s_text_size = 1024;
@@ -222,11 +492,6 @@ function chooseColorWindow() {
     _igColorEdit3(tmpAsciiz("Bg"), _get_bg_color(), _ImGuiColorEditFlags_None);
     _igInputTextMultiline(tmpAsciiz("Text"), s_text, s_text_size, allocTmp(_sizeof_ImVec2), 0, c_null, c_null);
     _igEnd();
-}
-
-function IM_COL32(r, g, b, a) {
-    "inline";
-    return ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
 }
 
 let ball_x = 0.0;
@@ -344,7 +609,7 @@ function randomizeNumbers() {
 let inited = false;
 let lastTime = 0;
 
-function renderSpreadsheet(name, curTime) {
+function renderSpreadsheet(name: string, app_w: number, app_h: number, curTime: number) {
     if (!inited) {
         inited = true;
         for (let i = 0; i < NUM_ROWS; ++i) {
@@ -358,6 +623,18 @@ function renderSpreadsheet(name, curTime) {
         lastTime = curTime;
         randomizeNumbers();
     }
+
+    // Window Position and Size
+    const vec2Buffer = allocTmp(_sizeof_ImVec2);
+
+    set_ImVec2_x(vec2Buffer, 100);
+    set_ImVec2_y(vec2Buffer, 150);
+    _igSetNextWindowPos(vec2Buffer, _ImGuiCond_Once, allocTmp(_sizeof_ImVec2));
+
+    // Set next window size
+    set_ImVec2_x(vec2Buffer, 512);
+    set_ImVec2_y(vec2Buffer, 540);
+    _igSetNextWindowSize(vec2Buffer, _ImGuiCond_Once);
 
     if (_igBegin(tmpAsciiz(name), c_null, 0)) {
         if (_igBeginTable(tmpAsciiz("spreadsheet"), NUM_COLS + 1, _ImGuiTableFlags_Resizable, allocTmp(_sizeof_ImVec2), 0)) {
@@ -389,9 +666,10 @@ function renderSpreadsheet(name, curTime) {
 
 globalThis.on_frame = function on_frame(width: number, height: number, curTime: number): void {
     flushAllocTmp();
+    gameWindow(width, height, curTime);
+    renderSpreadsheet("Cities", width, height, curTime);
     chooseColorWindow();
     bouncingBallWindow(width, height);
-    renderSpreadsheet("Cities", curTime);
 }
 
 globalThis.on_event = function on_event(type: number, key_code: number, modifiers: number): void {
@@ -408,4 +686,4 @@ globalThis.on_event = function on_event(type: number, key_code: number, modifier
     }
 }
 
-_scroller_run(c_null, CANVAS_WIDTH, CANVAS_HEIGHT);
+_scroller_run(c_null, 1024, 768);

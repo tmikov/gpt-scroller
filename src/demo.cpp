@@ -21,8 +21,6 @@
 #include <memory>
 #include <vector>
 
-#include "shaders.h"
-
 class Sound {
   bool const enabled_;
   SoLoud::Soloud soloud;
