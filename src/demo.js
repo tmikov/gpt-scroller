@@ -734,9 +734,8 @@ function nbodyWindow(app_w: number, app_h: number) {
             const x = (body.x - min_x) / (max_x - min_x) * win_x;
             const y = (body.y - min_y) / (max_y - min_y) * win_y;
             // Detect the sun and render it specially.
-            const radius = body.mass > 1 ? 7.0 : 3.0;
-            const color = body.mass > 1 ? IM_COL32(255, 255, 0, 255) : IM_COL32(0, 255, 0, 255);
-            _ImDrawList_AddCircleFilled(draw_list, addVectors(p, x, y), radius, color, 12);
+            const radius = body.name === "Sun" ? 7.0 : 3.0;
+            _ImDrawList_AddCircleFilled(draw_list, addVectors(p, x, y), radius, body.color, 12);
         }
     }
     _igEnd();

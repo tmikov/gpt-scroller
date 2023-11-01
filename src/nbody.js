@@ -1,4 +1,6 @@
 class Body {
+  name: string;
+  color: number;
   x: number;
   y: number;
   z: number;
@@ -8,6 +10,8 @@ class Body {
   mass: number;
 
   constructor(
+    name: string,
+    color: number,
     x: number,
     y: number,
     z: number,
@@ -16,6 +20,8 @@ class Body {
     vz: number,
     mass: number
   ) {
+    this.name = name;
+    this.color = color;
     this.x = x;
     this.y = y;
     this.z = z;
@@ -39,6 +45,8 @@ function nbodyRunner(): (number => Body[]) {
 
   function Jupiter(): Body {
     return new Body(
+      "Jupiter",
+      IM_COL32(255, 0, 0, 255),
       4.8414314424647209,
       -1.16032004402742839,
       -1.03622044471123109e-1,
@@ -51,6 +59,8 @@ function nbodyRunner(): (number => Body[]) {
 
   function Saturn(): Body {
     return new Body(
+      "Saturn",
+      IM_COL32(200, 150, 0, 255),
       8.34336671824457987,
       4.12479856412430479,
       -4.03523417114321381e-1,
@@ -63,6 +73,8 @@ function nbodyRunner(): (number => Body[]) {
 
   function Uranus(): Body {
     return new Body(
+      "Uranus",
+      IM_COL32(0, 255, 255, 255),
       1.2894369562139131e1,
       -1.51111514016986312e1,
       -2.23307578892655734e-1,
@@ -75,6 +87,8 @@ function nbodyRunner(): (number => Body[]) {
 
   function Neptune(): Body {
     return new Body(
+      "Neptune",
+      IM_COL32(0, 100, 255, 255),
       1.53796971148509165e1,
       -2.59193146099879641e1,
       1.79258772950371181e-1,
@@ -86,7 +100,7 @@ function nbodyRunner(): (number => Body[]) {
   }
 
   function Sun(): Body {
-    return new Body(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, SOLAR_MASS);
+    return new Body("Sun", IM_COL32(255, 255, 0, 255), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, SOLAR_MASS);
   }
 
   const bodies: Body[] = [Sun(), Jupiter(), Saturn(), Uranus(), Neptune()];
