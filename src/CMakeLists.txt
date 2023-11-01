@@ -15,7 +15,23 @@ add_subdirectory(stb)
 
 include_directories(${CMAKE_SOURCE_DIR}/external/soloud/include)
 
-add_executable(demo demo.cpp)
+foreach(file IN ITEMS ship enemy background)
+    add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/img_${file}.c
+            COMMAND echo "const unsigned char img_${file}_png[] = {" > ${CMAKE_CURRENT_BINARY_DIR}/img_${file}.c
+            COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/xxd.py ${CMAKE_SOURCE_DIR}/${file}.png >>
+                ${CMAKE_CURRENT_BINARY_DIR}/img_${file}.c
+            COMMAND echo "\}\;" >> ${CMAKE_CURRENT_BINARY_DIR}/img_${file}.c
+            COMMAND echo "const unsigned img_${file}_png_size = sizeof img_${file}_png\\;" >>
+                ${CMAKE_CURRENT_BINARY_DIR}/img_${file}.c
+
+            DEPENDS ${CMAKE_SOURCE_DIR}/${file}.png
+            COMMENT "Generating C array from ${file}.png"
+    )
+endforeach()
+
+
+add_executable(demo demo.cpp img_ship.c img_enemy.c img_background.c)
 target_link_libraries(demo sokol stb cimgui soloud)
 
 set(HERMES_BUILD "" CACHE STRING "Hermes build directory")
@@ -28,7 +44,7 @@ include_directories(${HERMES_SRC}/Public)
 include_directories(${HERMES_SRC}/API)
 include_directories(${HERMES_SRC}/API/jsi)
 
-add_library(scroller scroller.cpp js_externs_cwrap.c)
+add_library(scroller scroller.cpp js_externs_cwrap.c img_ship.c img_enemy.c img_background.c)
 target_link_libraries(scroller sokol stb)
 
 add_custom_command(OUTPUT jsdemo

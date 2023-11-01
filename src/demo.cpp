@@ -65,6 +65,23 @@ static double mathRandom(double range) {
 
 static sg_sampler s_sampler = {};
 
+struct InternalImage {
+  const char unsigned *data;
+  unsigned size;
+  const char *name;
+};
+
+#define IMPORT_IMAGE(name)                           \
+  extern "C" const unsigned char img_##name##_png[]; \
+  extern "C" const unsigned img_##name##_png_size;   \
+  static InternalImage s_img_##name = {img_##name##_png, img_##name##_png_size, #name}
+
+IMPORT_IMAGE(ship);
+IMPORT_IMAGE(enemy);
+IMPORT_IMAGE(background);
+
+std::array<InternalImage *, 3> s_internalImages = {&s_img_ship, &s_img_enemy, &s_img_background};
+
 class Image {
  public:
   int w_ = 0, h_ = 0;
@@ -72,8 +89,25 @@ class Image {
   simgui_image_t simguiImage_ = {};
 
   explicit Image(const char *path) {
+    const unsigned char *buf = nullptr;
+    unsigned size = 0;
+
+    for (auto img : s_internalImages) {
+      if (strcmp(img->name, path) == 0) {
+        buf = img->data;
+        size = img->size;
+        break;
+      }
+    }
+
+    unsigned char *data;
     int n;
-    unsigned char *data = stbi_load(path, &w_, &h_, &n, 4);
+    if (buf) {
+      data = stbi_load_from_memory(buf, size, &w_, &h_, &n, 4);
+    } else {
+      data = stbi_load(path, &w_, &h_, &n, 4);
+    }
+
     if (!data)
       abort();
 
@@ -113,9 +147,9 @@ static ImVec2 s_winSize;
 static ImVec2 s_scale;
 
 static void load_images() {
-  s_ship_image = std::make_unique<Image>("ship.png");
-  s_enemy_image = std::make_unique<Image>("enemy.png");
-  s_background_image = std::make_unique<Image>("background.png");
+  s_ship_image = std::make_unique<Image>("ship");
+  s_enemy_image = std::make_unique<Image>("enemy");
+  s_background_image = std::make_unique<Image>("background");
 }
 
 #define IM_COL32(r, g, b, a)                                                                 \
