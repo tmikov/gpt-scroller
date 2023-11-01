@@ -664,12 +664,91 @@ function renderSpreadsheet(name: string, app_w: number, app_h: number, curTime: 
     }
 }
 
+let nbody_advance = nbodyRunner();
+
+function nbodyWindow(app_w: number, app_h: number) {
+    // Window Position and Size
+    const vec2Buffer = allocTmp(_sizeof_ImVec2);
+
+    // Set next window pos
+    set_ImVec2_x(vec2Buffer, app_w * 0.05);
+    set_ImVec2_y(vec2Buffer, app_h * 0.50);
+    _igSetNextWindowPos(vec2Buffer, _ImGuiCond_Once, allocTmp(_sizeof_ImVec2));
+
+    // Set next window size
+    set_ImVec2_x(vec2Buffer, app_w * 0.45);
+    set_ImVec2_y(vec2Buffer, app_h * 0.45);
+    _igSetNextWindowSize(vec2Buffer, _ImGuiCond_Once);
+
+    if (_igBegin(tmpAsciiz("nbody"), c_null, 0)) {
+        // Draw List
+        const draw_list = _igGetWindowDrawList();
+
+        // Get position & win_size
+        const p = allocTmp(_sizeof_ImVec2);
+        const win_size = allocTmp(_sizeof_ImVec2);
+        _igGetCursorScreenPos(p);
+        _igGetContentRegionAvail(win_size);
+
+        // Draw borders
+        const white = IM_COL32(255, 255, 255, 255);
+        const border_thickness = 4.0;
+
+        _ImDrawList_AddRectFilled(draw_list, p, addVectors(p, get_ImVec2_x(win_size), border_thickness), white, 0, 0);
+        _ImDrawList_AddRectFilled(draw_list, p, addVectors(p, border_thickness, get_ImVec2_y(win_size)), white, 0, 0);
+        _ImDrawList_AddRectFilled(draw_list, addVectors(p, 0, get_ImVec2_y(win_size) - border_thickness), addVectors2(p, win_size), white, 0, 0);
+        _ImDrawList_AddRectFilled(draw_list, addVectors(p, get_ImVec2_x(win_size) - border_thickness, 0), addVectors2(p, win_size), white, 0, 0);
+
+        // Update bodies.
+        const dt = 0.01;
+        const bodies: Body[] = nbody_advance(dt);
+
+
+        // Calculate bounds.
+        const win_x = get_ImVec2_x(win_size);
+        const win_y = get_ImVec2_y(win_size);
+
+        let max_x = bodies[0].x;
+        let max_y = bodies[0].y;
+        let min_x = max_x;
+        let min_y = max_y;
+
+        for (let i = 0; i < bodies.length; ++i) {
+            const body = bodies[i];
+            max_x = body.x > max_x ? body.x : max_x;
+            max_y = body.y > max_y ? body.y : max_y;
+            min_x = body.x < min_x ? body.x : min_x;
+            min_y = body.y < min_y ? body.y : min_y;
+        }
+
+        // Add padding so the bodies aren't right at the edge.
+        const padding = 10.0;
+        max_x += padding;
+        max_y += padding;
+        min_x -= padding;
+        min_y -= padding;
+
+        // Render bodies.
+        for (let i = 0; i < bodies.length; ++i) {
+            const body = bodies[i];
+            const x = (body.x - min_x) / (max_x - min_x) * win_x;
+            const y = (body.y - min_y) / (max_y - min_y) * win_y;
+            // Detect the sun and render it specially.
+            const radius = body.mass > 1 ? 7.0 : 3.0;
+            const color = body.mass > 1 ? IM_COL32(255, 255, 0, 255) : IM_COL32(0, 255, 0, 255);
+            _ImDrawList_AddCircleFilled(draw_list, addVectors(p, x, y), radius, color, 12);
+        }
+    }
+    _igEnd();
+}
+
 globalThis.on_frame = function on_frame(width: number, height: number, curTime: number): void {
     flushAllocTmp();
     gameWindow(width, height, curTime);
     renderSpreadsheet("Cities", width, height, curTime);
     chooseColorWindow();
     bouncingBallWindow(width, height);
+    nbodyWindow(width, height);
 }
 
 globalThis.on_event = function on_event(type: number, key_code: number, modifiers: number): void {
