@@ -319,9 +319,9 @@ function createExplosion(x: number, y: number): void {
 }
 
 globalThis.on_init = function on_init(): void {
-    shipImage = new Image("../ship.png");
-    enemyImage = new Image("../enemy.png");
-    backgroundImage = new Image("../background.png");
+    shipImage = new Image("ship");
+    enemyImage = new Image("enemy");
+    backgroundImage = new Image("background");
     ship = new Ship(ASSUMED_W / 2, ASSUMED_H / 2);
 }
 
