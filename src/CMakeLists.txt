@@ -47,6 +47,7 @@ include_directories(${HERMES_SRC}/API/jsi)
 add_library(scroller scroller.cpp js_externs_cwrap.c img_ship.c img_enemy.c img_background.c)
 target_link_libraries(scroller sokol stb)
 
+if (0)
 add_custom_command(OUTPUT jsdemo
         COMMAND ${SHERMES} $<$<CONFIG:Debug>:-g3> -typed ffi_helpers.js asciiz.js sapp.js js_externs.js nbody.js demo.js
         -L${CMAKE_CURRENT_BINARY_DIR}
@@ -60,3 +61,19 @@ add_custom_command(OUTPUT jsdemo
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_custom_target(build-jsdemo DEPENDS jsdemo)
+endif()
+
+set(JSDEMO_O jsdemo${CMAKE_C_OUTPUT_EXTENSION})
+add_custom_command(OUTPUT ${JSDEMO_O}
+        COMMAND ${SHERMES} $<$<CONFIG:Debug>:-g3> -typed --exported-unit=demo -c
+            ffi_helpers.js asciiz.js sapp.js js_externs.js nbody.js demo.js
+        -Wc,-I.
+        -o ${CMAKE_CURRENT_BINARY_DIR}/${JSDEMO_O}
+        DEPENDS ffi_helpers.js asciiz.js sapp.js js_externs.js nbody.js demo.js
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_executable(jsdemo ${CMAKE_CURRENT_BINARY_DIR}/${JSDEMO_O})
+set_target_properties(jsdemo PROPERTIES LINKER_LANGUAGE CXX)
+target_link_directories(jsdemo PRIVATE ${HERMES_BUILD}/lib)
+target_link_libraries(jsdemo sokol stb cimgui scroller hermesvm)

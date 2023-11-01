@@ -543,7 +543,7 @@ static void chooseColorWindow() {
   igBegin("Settings", 0, ImGuiWindowFlags_None);
   igColorEdit3("Bg", &s_pass_action.colors[0].clear_value.r, ImGuiColorEditFlags_None);
   static char buffer[1024] = "This is some text for editing.\nAnd more.";
-  igInputTextMultiline("Text", buffer, sizeof(buffer), ImVec2{0,0}, 0, NULL, NULL);
+  igInputTextMultiline("Text", buffer, sizeof(buffer), ImVec2{0, 0}, 0, NULL, NULL);
   igEnd();
 }
 
@@ -761,7 +761,7 @@ void app_frame() {
   sg_commit();
 }
 
-int main() {
+static sapp_desc make_sapp_desc() {
   sapp_desc desc = {};
   desc.init_cb = app_init;
   desc.frame_cb = app_frame;
@@ -771,7 +771,9 @@ int main() {
   desc.height = 600;
   desc.window_title = "C GPT Scroller";
   desc.logger.func = slog_func;
+  return desc;
+}
 
-  sapp_run(&desc);
-  return 0;
+sapp_desc sokol_main(int argc, char *argv[]) {
+  return make_sapp_desc();
 }

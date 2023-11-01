@@ -83,6 +83,7 @@ class Image {
 
 static std::vector<std::unique_ptr<Image>> s_images{};
 
+static SHRuntime *s_shRuntime = nullptr;
 static facebook::hermes::HermesRuntime *s_hermes = nullptr;
 
 static bool s_started = false;
@@ -144,6 +145,11 @@ static void app_cleanup() {
   simgui_shutdown();
   sdtx_shutdown();
   sg_shutdown();
+
+  if (s_shRuntime) {
+    _sh_done(s_shRuntime);
+    s_shRuntime = nullptr;
+  }
 }
 
 static void app_event(const sapp_event *ev) {
@@ -218,8 +224,10 @@ static void app_frame() {
   sg_commit();
 }
 
+static sapp_desc s_app_desc{};
 extern "C" void scroller_run(SHRuntime *shr, int width, int height) {
   s_hermes = _sh_get_hermes_runtime(shr);
+  s_shRuntime = shr;
 
   sapp_desc desc = {};
   desc.init_cb = app_init;
@@ -231,5 +239,15 @@ extern "C" void scroller_run(SHRuntime *shr, int width, int height) {
   desc.window_title = "Static Hermes UI";
   desc.logger.func = slog_func;
 
-  sapp_run(&desc);
+  s_app_desc = desc;
+}
+
+extern "C" SHUnit sh_export_demo;
+
+sapp_desc sokol_main(int argc, char* argv[]) {
+  SHRuntime *shr = _sh_init(argc, argv);
+  if (!_sh_initialize_units(shr, 1, &sh_export_demo))
+    abort();
+
+  return s_app_desc;
 }
