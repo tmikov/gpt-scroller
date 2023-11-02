@@ -87,9 +87,8 @@ static facebook::hermes::HermesRuntime *s_hermes = nullptr;
 
 static bool s_started = false;
 static uint64_t s_start_time = 0;
-static int s_frame_count = 0;
 static uint64_t s_last_fps_time = 0;
-static uint64_t s_fps = 0;
+static double s_fps = 0;
 
 extern "C" int load_image(const char *path) {
   s_images.emplace_back(std::make_unique<Image>(path));
@@ -178,14 +177,11 @@ static void app_frame() {
     s_started = true;
     s_start_time = now;
     s_last_fps_time = now;
-    s_frame_count = 0;
   } else {
-    ++s_frame_count;
     // Update FPS every second
     uint64_t diff = stm_diff(now, s_last_fps_time);
     if (diff > 1000000000) {
-      s_fps = s_frame_count / stm_sec(diff);
-      s_frame_count = 0;
+      s_fps = 1.0 / sapp_frame_duration(); // stm_sec(diff);
       s_last_fps_time = now;
     }
   }
