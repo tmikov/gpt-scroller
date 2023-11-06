@@ -81,6 +81,7 @@ def to_sh_name(id):
 
     return "UNKNOWN_TYPE"
 
+
 # Mapping from the ID for a type to the corresponding type name in C.
 def to_c_name(id):
     elem = id_to_element[id]
@@ -96,20 +97,24 @@ def to_c_name(id):
     if elem.tag == "Struct":
         return "struct " + elem.get("name")
     if elem.tag == "Union":
-        return  "union " + elem.get("name")
+        return "union " + elem.get("name")
     if elem.tag == "ArrayType":
         return to_c_name(elem.get("type")) + "*"
 
     return "UNKNOWN_TYPE"
 
+
 # Whether a type needs to be wrapped and passed by pointer.
 def need_cwrap(id):
     return id_to_element[id].tag == "Struct" or id_to_element[id].tag == "Union"
 
+
 # Get the filename from the command line arguments
 if len(sys.argv) < 3:
     print("Usage: ffigen.py <cwrap|js> <filename> [filter filenames]")
-    print("Last argument optionally provides an allow-list of files from which to export types and functions.")
+    print(
+        "Last argument optionally provides an allow-list of files from which to export types and functions."
+    )
     print("Example: ffi_gen.py js foo.h foo.h,bar.h")
     sys.exit(1)
 mode = sys.argv[1]
@@ -134,11 +139,19 @@ else:
         for substr in filter_names:
             if substr in file.get("name"):
                 allowed_file_ids.add(file.get("id"))
-    
+
 
 # Collect all of the type declarations.
-for tag in ["Struct", "Enumeration", "FundamentalType", "PointerType", "Union",
-            "ArrayType", "CvQualifiedType", "FunctionType"]:
+for tag in [
+    "Struct",
+    "Enumeration",
+    "FundamentalType",
+    "PointerType",
+    "Union",
+    "ArrayType",
+    "CvQualifiedType",
+    "FunctionType",
+]:
     for elem in root.findall(".//" + tag):
         id_to_element[elem.get("id")] = elem
 
@@ -177,7 +190,7 @@ if mode == "js":
         for arg in func.findall(".//Argument"):
             if need_cwrap(arg.get("type")):
                 do_cwrap = True
-            
+
             # Emit each parameter in the SH signature.
             arg_name = arg.get("name")
             arg_type = to_sh_name(arg.get("type"))
@@ -190,7 +203,7 @@ if mode == "js":
             "const _"
             + name
             + " = $SHBuiltin.extern_c({}, function "
-            + name 
+            + name
             + ("_cwrap" if do_cwrap else "")
             + "("
             + ", ".join(args)
@@ -224,24 +237,30 @@ if mode == "js":
 
         offset = int(field.get("offset")) // 8
 
-        # If the field is a struct, union, or array, return a pointer to 
+        # If the field is a struct, union, or array, return a pointer to
         # it and do not emit a setter.
-        if field_type_elem.tag == "Array" or field_type_elem.tag == "Union" or field_type_elem.tag == "Struct":
+        if (
+            field_type_elem.tag == "Array"
+            or field_type_elem.tag == "Union"
+            or field_type_elem.tag == "Struct"
+        ):
             print(f"function get_{struct_name}_{field_name}(s: c_ptr): {sh_type} {{")
-            print(f"  \"inline\";\n  return _sh_ptr_add(s, {offset});\n}}")
+            print(f'  "inline";\n  return _sh_ptr_add(s, {offset});\n}}')
         else:
             print(f"function get_{struct_name}_{field_name}(s: c_ptr): {sh_type} {{")
-            print(f"  \"inline\";\n  return _sh_ptr_read_{sh_type}(s, {offset});\n}}")
+            print(f'  "inline";\n  return _sh_ptr_read_{sh_type}(s, {offset});\n}}')
 
-            print(f"function set_{struct_name}_{field_name}(s: c_ptr, v: {sh_type}): void {{")
-            print(f"  \"inline\";\n  _sh_ptr_write_{sh_type}(s, {offset}, v);\n}}")
+            print(
+                f"function set_{struct_name}_{field_name}(s: c_ptr, v: {sh_type}): void {{"
+            )
+            print(f'  "inline";\n  _sh_ptr_write_{sh_type}(s, {offset}, v);\n}}')
 
     # Generate JS constants from the ordered dictionary
     if len(constants_dict):
         print()
     for name, value in constants_dict.items():
         print(f"const _{name} = {value};")
-    
+
     # Generate JS constants from enum values.
     for enum in root.findall(".//Enumeration"):
         if elem.get("file") not in allowed_file_ids:
@@ -273,7 +292,7 @@ elif mode == "cwrap":
 
         # The body of the generated wrapper.
         body = ""
-        
+
         # If the return type requires wrapping, add an out parameter and
         # populate it with the result of the call.
         if need_cwrap(return_id):
@@ -296,10 +315,12 @@ elif mode == "cwrap":
                 params.append(to_c_name(arg.get("type")) + f"* a{n}")
                 args.append(f"*a{n}")
             else:
-                params.append(to_c_name(arg.get("type")) +f" a{n}")
+                params.append(to_c_name(arg.get("type")) + f" a{n}")
                 args.append(f"a{n}")
-        
+
         body += ", ".join(args)
         body += ");\n"
 
-        print(f"{return_type} {func_name}_cwrap({', '.join(params)}){{\n  " + body + "}")
+        print(
+            f"{return_type} {func_name}_cwrap({', '.join(params)}){{\n  " + body + "}"
+        )
