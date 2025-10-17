@@ -18,9 +18,7 @@ configuration flag or by setting the `NOSOUND` environment variable.
 
 You need CMake and Ninja (or Make) to build the C++ version.
 
-You need a fork of Static Hermes to build the JS version (we made some changes
-in SH for this demo, that we are not sure that we want to land in the official
-branch). The fork can be found at https://github.com/tmikov/hermes/tree/sh-gpt-scroller.
+You need up to date Static Hermes to build the JS version.
 
 There are no other dependencies.
 

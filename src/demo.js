@@ -1,4 +1,4 @@
-const _scroller_run = $SHBuiltin.extern_c({passRuntime: true}, function scroller_run(shr: c_ptr, width: c_int, height: c_int): void {
+const _scroller_run = $SHBuiltin.extern_c({}, function scroller_run(shr: c_ptr, width: c_int, height: c_int): void {
 });
 const _get_bg_color = $SHBuiltin.extern_c({}, function get_bg_color(): c_ptr {
     throw 0;
@@ -764,4 +764,4 @@ globalThis.on_event = function on_event(type: number, key_code: number, modifier
     }
 }
 
-_scroller_run(c_null, 1024, 768);
+_scroller_run($SHBuiltin.c_native_runtime(), 1024, 768);
